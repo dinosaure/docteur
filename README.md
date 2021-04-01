@@ -15,7 +15,7 @@ $ git clone https://github.com/dinosaure/docteur
 $ cd docteur
 $ opam pin add -y .
 $ cd unikernel
-$ docteur.make https://github.com/dinosaure/docteur refs/heads/master disk.img
+$ docteur.make https://github.com/dinosaure/docteur refs/heads/main disk.img
 $ mirage configure -t hvt --disk docteur
 $ mirage build
 $ solo5-hvt --block:docteur=disk.img simple.hvt --filename /README.md
