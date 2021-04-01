@@ -1,0 +1,13 @@
+(library
+ (name docteur)
+ (public_name docteur.solo5)
+ (libraries
+  hxd.string
+  mirage-kv
+  git
+  digestif
+  lwt
+  carton
+  art
+  bigstringaf
+  mirage-solo5))

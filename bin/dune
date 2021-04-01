@@ -1,0 +1,29 @@
+(executable
+ (name make)
+ (modules make)
+ (package docteur)
+ (public_name docteur.make)
+ (libraries
+  digestif.c
+  bigarray
+  bigarray-compat
+  bigstringaf
+  result
+  fpath
+  cmdliner
+  rresult
+  logs
+  logs.cli
+  fmt.tty
+  fmt.cli
+  mtime
+  mtime.clock.os
+  lwt
+  lwt.unix
+  git-unix
+  git
+  git.nss.git
+  mmap
+  unix
+  git-cohttp-unix
+  bos))
