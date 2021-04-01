@@ -38,6 +38,7 @@ dev-repo: "git+https://github.com/dinosaure/kaveero.git"
 
 pin-depends: [
   ["carton.0.4.0" "git+https://github.com/mirage/ocaml-git.git#8e0316ae9bd295e45a1a90b5f4931557a63690da"]
+  ["git.3.3.3" "git+https://github.com/mirage/ocaml-git.git#8e0316ae9bd295e45a1a90b5f4931557a63690da"]
   ["git-unix.3.3.3" "git+https://github.com/mirage/ocaml-git.git#8e0316ae9bd295e45a1a90b5f4931557a63690da"]
   ["art.dev" "git+https://github.com/dinosaure/art.git#7ed64f90adb484f40329685283156993d04c7c03"]
 ]
