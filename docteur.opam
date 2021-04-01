@@ -37,6 +37,6 @@ run-test: ["dune" "runtest" "-p" name "-j" jobs]
 dev-repo: "git+https://github.com/dinosaure/kaveero.git"
 
 pin-depends: [
-  ["carton.dev" "git+https://github.com/mirage/ocaml-git#468a8aec12afaa3699b83c62deaad81a1016030a"]
-  ["art.dev" "git+https://github.com/dinosaure/art#7ed64f90adb484f40329685283156993d04c7c03"]
+  ["carton.dev" "git+https://github.com/mirage/ocaml-git.git#eecfb5d780df2548da3a3ca90ec34a01ba825d8d"]
+  ["art.dev" "git+https://github.com/dinosaure/art.git#7ed64f90adb484f40329685283156993d04c7c03"]
 ]
