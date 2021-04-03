@@ -171,17 +171,27 @@ let transmit cc src dst =
         go (Int64.add cc (Int64.of_int len)) in
   go cc
 
-let save tmp hash output block_size =
+let save ~offset idx tmp hash output block_size =
   Lwt_unix.openfile (Fpath.to_string output)
     Unix.[ O_WRONLY; O_CREAT; O_TRUNC ]
     0o644
   >>= fun dst ->
   Lwt_unix.openfile (Fpath.to_string tmp) Unix.[ O_RDONLY ] 0o644 >>= fun src ->
   write_string dst (Digestif.SHA1.to_raw_string hash) >>= fun () ->
-  transmit (Int64.of_int Digestif.SHA1.digest_size) src dst >>= fun top ->
+  let serial = Bigstringaf.create 8 in
+  Bigstringaf.set_int64_le serial 0 offset ;
+  write_string dst (Bigstringaf.to_string serial) >>= fun () ->
+  transmit (Int64.of_int (Digestif.SHA1.digest_size + 8)) src dst >>= fun top ->
   let rem = Int64.sub block_size (Int64.rem top block_size) in
   let str = String.make (Int64.to_int rem) '\000' in
-  write_string dst str >>= fun () -> Lwt.return_ok ()
+  write_string dst str >>= fun () ->
+  Lwt_unix.close src >>= fun () ->
+  Lwt_unix.openfile (Fpath.to_string idx) Unix.[ O_RDONLY ] 0o644 >>= fun idx ->
+  transmit (Int64.add top rem) idx dst >>= fun top ->
+  let rem = Int64.sub block_size (Int64.rem top block_size) in
+  let str = String.make (Int64.to_int rem) '\000' in
+  write_string dst str >>= fun () ->
+  Lwt_unix.close idx >>= fun () -> Lwt.return_ok ()
 (* TODO(dinosaure): [Lwt.catch] *)
 
 module SSH = struct
@@ -212,7 +222,6 @@ module SSH = struct
     let edn = Fmt.str "%s@%a" user pp_inet_addr host in
     let cmd = Fmt.str {sh|git-upload-pack '%s'|sh} path in
     let cmd = Fmt.str "ssh -p %d %s %a" port edn Fmt.(quote string) cmd in
-    Fmt.epr ">>> Start an ssh connection: %s\n%!" cmd ;
     try
       let ic, oc = Unix.open_process cmd in
       Lwt.return_ok { ic; oc }
@@ -224,15 +233,12 @@ module SSH = struct
       let len = input t.ic tmp 0 0x1000 in
       if len = 0
       then Lwt.return_ok `Eof
-      else (
-        Fmt.epr "~> %S\n%!" (Bytes.sub_string tmp 0 len) ;
-        Lwt.return_ok (`Data (Cstruct.of_bytes tmp ~off:0 ~len)))
+      else Lwt.return_ok (`Data (Cstruct.of_bytes tmp ~off:0 ~len))
     with Unix.Unix_error (err, f, v) -> Lwt.return_error (err, f, v)
 
   let write t cs =
     let str = Cstruct.to_string cs in
     try
-      Fmt.epr "<~ %S\n%!" str ;
       output_string t.oc str ;
       flush t.oc ;
       Lwt.return_ok ()
@@ -290,7 +296,14 @@ let fetch edn want output block_size =
     ~src ~dst ~idx ~create_pack_stream ~create_idx_stream () ()
   >|= R.reword_error sync_error
   >>? function
-  | Some (_, [ (_, hash) ]) -> save dst hash output block_size
+  | Some (_, [ (_, hash) ]) ->
+      let idx_offset =
+        Int64.add
+          (Unix.LargeFile.stat (Fpath.to_string dst)).Unix.LargeFile.st_size
+          (Int64.of_int (Digestif.SHA1.digest_size + 8)) in
+      let idx_remain = Int64.sub block_size (Int64.rem idx_offset block_size) in
+      let idx_offset = Int64.add idx_offset idx_remain in
+      save ~offset:idx_offset idx dst hash output block_size
   | _ -> assert false
 
 let main _ edn want output block_size =

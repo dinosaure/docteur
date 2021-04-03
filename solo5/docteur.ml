@@ -31,6 +31,8 @@ module SHA1 = struct
   let length = digest_size
 
   let compare a b = String.compare (to_raw_string a) (to_raw_string b)
+
+  let hash x = Hashtbl.hash (to_raw_string x)
 end
 
 module Lwt_scheduler = struct
@@ -120,7 +122,8 @@ let read (handle, info) buf ~off ~len =
   let tmp = Bigstringaf.create (Int64.to_int info.block_size) in
   match solo5_block_read handle 0L tmp 0 (Int64.to_int info.block_size) with
   | SOLO5_R_OK ->
-      Bigstringaf.blit_to_bytes tmp ~src_off:SHA1.length buf ~dst_off:off ~len ;
+      Bigstringaf.blit_to_bytes tmp ~src_off:(SHA1.length + 8) buf ~dst_off:off
+        ~len ;
       scheduler.return len
   | SOLO5_R_EINVAL -> invalid_arg "Block: read(): Invalid argument"
   | SOLO5_R_EUNSPEC -> unspecified "Block: read(): Unspecified error"
@@ -200,7 +203,7 @@ let first_pass (handle, info) =
         | _ -> failwith "Block: analyze(): Cannot read ~sector:%d" !sector)
     | `Entry ({ First_pass.kind = Base _; offset; size; consumed; _ }, decoder)
       ->
-        let offset = Int64.add offset (Int64.of_int SHA1.length) in
+        let offset = Int64.add offset (Int64.of_int (SHA1.length + 8)) in
         let n = First_pass.count decoder - 1 in
         Hashtbl.add weight offset size ;
         Hashtbl.add length offset size ;
@@ -217,7 +220,7 @@ let first_pass (handle, info) =
             _;
           },
           decoder ) ->
-        let offset = Int64.add offset (Int64.of_int SHA1.length) in
+        let offset = Int64.add offset (Int64.of_int (SHA1.length + 8)) in
         let n = First_pass.count decoder - 1 in
         replace weight Int64.(sub offset (Int64.of_int s)) source ;
         replace weight offset target ;
@@ -241,7 +244,7 @@ let first_pass (handle, info) =
             _;
           },
           decoder ) ->
-        let offset = Int64.add offset (Int64.of_int SHA1.length) in
+        let offset = Int64.add offset (Int64.of_int (SHA1.length + 8)) in
         let n = First_pass.count decoder - 1 in
         replace weight offset (Stdlib.max target source) ;
         Hashtbl.add length offset size ;
@@ -269,7 +272,7 @@ let first_pass (handle, info) =
   match solo5_block_read handle 0L tp 0 (Int64.to_int info.block_size) with
   | SOLO5_R_OK ->
       let decoder =
-        First_pass.src decoder tp SHA1.length
+        First_pass.src decoder tp (SHA1.length + 8)
           (Int64.to_int info.block_size - SHA1.length) in
       go decoder
   | _ -> failwith "Block: analyze(): Cannot read ~sector:%d" 0
@@ -335,11 +338,40 @@ let load pack uid =
       R.ok
         (`Blob
           (Bigstringaf.sub (Carton.Dec.raw v) ~off:0 ~len:(Carton.Dec.len v)))
-  | `D -> failwith "Unexpected tag object"
+  | `D -> R.ok `Tag
+
+let light pack uid =
+  let open Rresult in
+  let path = Carton.Dec.path_of_uid ~map pack uid in
+  match Carton.Dec.kind_of_path path with
+  | `C -> R.ok `Blob
+  | `D -> R.ok `Tag
+  | `A | `B -> (
+      let cursor = List.hd (Carton.Dec.path_to_list path) in
+      let weight =
+        Carton.Dec.weight_of_offset ~map pack ~weight:Carton.Dec.null cursor
+      in
+      let raw = Carton.Dec.make_raw ~weight in
+      let v = Carton.Dec.of_offset_with_path ~map pack ~path raw ~cursor in
+      match Carton.Dec.kind v with
+      | `A ->
+          let parser = Encore.to_angstrom Commit.format in
+          Angstrom.parse_bigstring ~consume:All parser
+            (Bigstringaf.sub (Carton.Dec.raw v) ~off:0 ~len:(Carton.Dec.len v))
+          |> R.reword_error (fun _ -> R.msgf "Invalid commit (%a)" SHA1.pp uid)
+          >>| fun v -> `Commit v
+      | `B ->
+          let parser = Encore.to_angstrom Tree.format in
+          Angstrom.parse_bigstring ~consume:All parser
+            (Bigstringaf.sub (Carton.Dec.raw v) ~off:0 ~len:(Carton.Dec.len v))
+          |> R.reword_error (fun _ -> R.msgf "Invalid tree (%a)" SHA1.pp uid)
+          >>| fun v -> `Tree v
+      | _ -> assert false)
+(* XXX(dinosaure): safe. *)
 
 let rec fold pack directories files path hash =
   let open Rresult in
-  load pack hash >>= function
+  light pack hash >>= function
   | `Tree tree ->
       let f a { Git.Tree.name; node; perm } =
         match (a, perm) with
@@ -355,9 +387,9 @@ let rec fold pack directories files path hash =
         | (Ok _ as v), _ -> v in
       List.fold_left f (R.ok ()) (Git.Tree.to_list tree)
   | `Commit commit -> fold pack directories files path (Commit.tree commit)
-  | `Blob _ -> R.ok ()
+  | `Blob | `Tag -> R.ok ()
 
-let analyze name handle info commit =
+let unpack name handle info commit =
   let open Lwt.Infix in
   first_pass (handle, info) |> prj >>= fun (matrix, oracle) ->
   let z = De.bigstring_create De.io_buffer_size in
@@ -405,6 +437,83 @@ let analyze name handle info commit =
             }
       | Error _ as err -> Lwt.return err)
 
+module Gr =
+  Graph.Imperative.Digraph.ConcreteLabeled
+    (SHA1)
+    (struct
+      include String
+
+      let default = ""
+    end)
+
+module Dfs = Graph.Traverse.Dfs (Gr)
+
+let rec split ~block_size index off acc =
+  if off = Bigstringaf.length index
+  then List.rev acc
+  else
+    let block = Bigstringaf.sub index ~off ~len:(Int64.to_int block_size) in
+    split ~block_size index (off + Int64.to_int block_size) (block :: acc)
+
+let read_one_block handle offset ~off ~len buffer =
+  match solo5_block_read handle offset buffer off len with
+  | SOLO5_R_OK -> ()
+  | SOLO5_R_AGAIN -> assert false
+  | SOLO5_R_EINVAL ->
+      invalid_arg "Block: read(%Lx:%d): Invalid argument" offset len
+  | SOLO5_R_EUNSPEC ->
+      unspecified "Block: read(%Lx:%d): Unspecified error" offset len
+
+let read handle offset bs =
+  let rec go offset = function
+    | [] -> ()
+    | x :: r ->
+        read_one_block handle offset ~off:0 ~len:(Bigstringaf.length x) x ;
+        go (Int64.add offset (Int64.of_int (Bigstringaf.length x))) r in
+  go offset bs
+
+let iter name handle (info : solo5_block_info) commit cursor =
+  let index =
+    Bigstringaf.create (Int64.to_int (Int64.sub info.capacity cursor)) in
+  let blocks = split ~block_size:info.block_size index 0 [] in
+  read handle cursor blocks ;
+  let index =
+    Carton.Dec.Idx.make index ~uid_ln:SHA1.digest_size
+      ~uid_rw:SHA1.to_raw_string ~uid_wr:SHA1.of_raw_string in
+  let z = Bigstringaf.create De.io_buffer_size in
+  let zw = De.make_window ~bits:15 in
+  let allocate _ = zw in
+  let find uid =
+    match Carton.Dec.Idx.find index uid with
+    | Some (_, offset) -> Int64.add (Int64.of_int (SHA1.digest_size + 8)) offset
+    | None -> failwith "%a does not exist" SHA1.pp uid in
+  let pack =
+    Carton.Dec.make ~sector:info.block_size (handle, info) ~allocate ~z
+      ~uid_ln:SHA1.length ~uid_rw:SHA1.of_raw_string find in
+  let directories = Art.make () in
+  let files = Art.make () in
+  match fold pack directories files (Fpath.v "/") commit with
+  | Ok () ->
+      let buffers =
+        Lwt_pool.create 4 @@ fun () ->
+        let z = Bigstringaf.create De.io_buffer_size in
+        let w = De.make_window ~bits:15 in
+        let allocate _ = w in
+        let w = Carton.Dec.W.make ~sector:info.block_size (handle, info) in
+        Lwt.return { z; allocate; w } in
+      Lwt.return_ok
+        {
+          name;
+          handle;
+          capacity = info.capacity;
+          block_size = info.block_size;
+          buffers;
+          pack;
+          directories;
+          files;
+        }
+  | Error _ as err -> Lwt.return err
+
 type key = Mirage_kv.Key.t
 
 type error =
@@ -422,7 +531,7 @@ let pp_error ppf = function
       Fmt.pf ppf "%a is not a directory" Mirage_kv.Key.pp key
   | `Value_expected key -> Fmt.pf ppf "%a is not a file" Mirage_kv.Key.pp key
 
-let connect ~name =
+let connect ?(analyze = false) ~name =
   match solo5_block_acquire name with
   | SOLO5_R_AGAIN, _, _ ->
       assert false (* not returned by solo5_block_acquire *)
@@ -436,10 +545,13 @@ let connect ~name =
         solo5_block_read handle 0L commit 0 (Int64.to_int info.block_size)
       with
       | SOLO5_R_OK ->
+          let index = Bigstringaf.get_int64_le commit SHA1.digest_size in
           let commit =
             Bigstringaf.substring commit ~off:0 ~len:SHA1.digest_size in
           let commit = SHA1.of_raw_string commit in
-          analyze name handle info commit
+          if analyze
+          then unpack name handle info commit
+          else iter name handle info commit index
       | SOLO5_R_AGAIN -> assert false
       | SOLO5_R_EINVAL ->
           invalid_arg "Block: connect(%s): Invalid argument" name

@@ -1,6 +1,6 @@
 open Mirage
 
-let kaveero disk =
+let kaveero ?(analyze= false) disk =
   impl @@ object
        inherit base_configurable
        method ty = kv_ro
@@ -20,8 +20,9 @@ let kaveero disk =
        method! connect _ _modname _ =
          Fmt.str
            {ocaml|let ( <.> ) f g = fun x -> f (g x) in
-               let f = Rresult.R.(failwith_error_msg <.> reword_error (msgf "%%a" Docteur.pp_error)) in
-               Lwt.map f (Docteur.connect ~name:%a)|ocaml}
+                  let f = Rresult.R.(failwith_error_msg <.> reword_error (msgf "%%a" Docteur.pp_error)) in
+                  Lwt.map f (Docteur.connect ~analyze:%b ~name:%a)|ocaml}
+           analyze
            Key.serialize_call (Key.abstract disk)
      end
 
