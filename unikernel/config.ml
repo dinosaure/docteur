@@ -4,12 +4,12 @@ let kaveero disk =
   impl @@ object
        inherit base_configurable
        method ty = kv_ro
-       method name = Fmt.str "kaveero-%a" Key.pp (Key.abstract disk)
-       method module_name = "Kaveero"
+       method name = Fmt.str "docteur-%a" Key.pp (Key.abstract disk)
+       method module_name = "Docteur"
        method! keys = [ Key.abstract disk ]
        method! packages =
          Key.match_ Key.(value target) @@ function
-         | #Key.mode_solo5 -> [ package "kaveero" ~sublibs:[ "solo5" ] ]
+         | #Key.mode_solo5 -> [ package "docteur" ~sublibs:[ "solo5" ] ]
          | _ -> []
        method! configure info =
          let ctx = Info.context info in
@@ -20,8 +20,8 @@ let kaveero disk =
        method! connect _ _modname _ =
          Fmt.str
            {ocaml|let ( <.> ) f g = fun x -> f (g x) in
-               let f = Rresult.R.(failwith_error_msg <.> reword_error (msgf "%%a" Kaveero.pp_error)) in
-               Lwt.map f (Kaveero.connect ~name:%a)|ocaml}
+               let f = Rresult.R.(failwith_error_msg <.> reword_error (msgf "%%a" Docteur.pp_error)) in
+               Lwt.map f (Docteur.connect ~name:%a)|ocaml}
            Key.serialize_call (Key.abstract disk)
      end
 

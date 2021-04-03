@@ -282,7 +282,12 @@ let map (handle, info) ~pos len =
   let len = Int64.to_int info.block_size in
   let res = Bigstringaf.create len in
   match solo5_block_read handle pos res 0 len with
-  | SOLO5_R_OK -> res
+  | SOLO5_R_OK ->
+      Log.debug (fun m ->
+          m "mmap: @[<hov>%a@]"
+            (Hxd_string.pp Hxd.default)
+            (Bigstringaf.to_string res)) ;
+      res
   | SOLO5_R_AGAIN -> assert false
   | SOLO5_R_EINVAL -> invalid_arg "Block: read(): Invalid argument"
   | SOLO5_R_EUNSPEC -> unspecified "Block: read(): Unspecified error"
