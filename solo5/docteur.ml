@@ -437,17 +437,6 @@ let unpack name handle info commit =
             }
       | Error _ as err -> Lwt.return err)
 
-module Gr =
-  Graph.Imperative.Digraph.ConcreteLabeled
-    (SHA1)
-    (struct
-      include String
-
-      let default = ""
-    end)
-
-module Dfs = Graph.Traverse.Dfs (Gr)
-
 let rec split ~block_size index off acc =
   if off = Bigstringaf.length index
   then List.rev acc
