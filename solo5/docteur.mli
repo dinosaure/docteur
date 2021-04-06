@@ -7,4 +7,4 @@ type error =
 
 include Mirage_kv.RO with type error := error
 
-val connect : ?analyze:bool -> name:string -> (t, [> error ]) result Lwt.t
+val connect : ?analyze:bool -> string -> (t, [> error ]) result Lwt.t

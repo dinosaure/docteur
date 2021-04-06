@@ -21,7 +21,7 @@ let kaveero ?(analyze= false) disk =
          Fmt.str
            {ocaml|let ( <.> ) f g = fun x -> f (g x) in
                   let f = Rresult.R.(failwith_error_msg <.> reword_error (msgf "%%a" Docteur.pp_error)) in
-                  Lwt.map f (Docteur.connect ~analyze:%b ~name:%a)|ocaml}
+                  Lwt.map f (Docteur.connect ~analyze:%b %a)|ocaml}
            analyze
            Key.serialize_call (Key.abstract disk)
      end

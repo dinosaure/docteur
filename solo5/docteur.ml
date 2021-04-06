@@ -531,7 +531,7 @@ let pp_error ppf = function
       Fmt.pf ppf "%a is not a directory" Mirage_kv.Key.pp key
   | `Value_expected key -> Fmt.pf ppf "%a is not a file" Mirage_kv.Key.pp key
 
-let connect ?(analyze = false) ~name =
+let connect ?(analyze = false) name =
   match solo5_block_acquire name with
   | SOLO5_R_AGAIN, _, _ ->
       assert false (* not returned by solo5_block_acquire *)
