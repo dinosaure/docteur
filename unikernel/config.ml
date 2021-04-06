@@ -1,6 +1,6 @@
 open Mirage
 
-let kaveero ?(analyze= false) disk =
+let docteur ?(analyze= false) disk =
   impl @@ object
        inherit base_configurable
        method ty = kv_ro
@@ -40,4 +40,4 @@ let simple = foreign "Unikernel.Make"
 
 let console = default_console
 
-let () = register "simple" [ simple $ console $ kaveero disk ]
+let () = register "simple" [ simple $ console $ docteur disk ]
