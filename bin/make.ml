@@ -171,18 +171,115 @@ let transmit cc src dst =
         go (Int64.add cc (Int64.of_int len)) in
   go cc
 
-let save tmp hash output block_size =
+let save ~offset idx tmp hash output block_size =
   Lwt_unix.openfile (Fpath.to_string output)
     Unix.[ O_WRONLY; O_CREAT; O_TRUNC ]
     0o644
   >>= fun dst ->
   Lwt_unix.openfile (Fpath.to_string tmp) Unix.[ O_RDONLY ] 0o644 >>= fun src ->
   write_string dst (Digestif.SHA1.to_raw_string hash) >>= fun () ->
-  transmit (Int64.of_int Digestif.SHA1.digest_size) src dst >>= fun top ->
+  let serial = Bigstringaf.create 8 in
+  Bigstringaf.set_int64_le serial 0 offset ;
+  write_string dst (Bigstringaf.to_string serial) >>= fun () ->
+  transmit (Int64.of_int (Digestif.SHA1.digest_size + 8)) src dst >>= fun top ->
   let rem = Int64.sub block_size (Int64.rem top block_size) in
   let str = String.make (Int64.to_int rem) '\000' in
-  write_string dst str >>= fun () -> Lwt.return_ok ()
+  write_string dst str >>= fun () ->
+  Lwt_unix.close src >>= fun () ->
+  Lwt_unix.openfile (Fpath.to_string idx) Unix.[ O_RDONLY ] 0o644 >>= fun idx ->
+  transmit (Int64.add top rem) idx dst >>= fun top ->
+  let rem = Int64.sub block_size (Int64.rem top block_size) in
+  let str = String.make (Int64.to_int rem) '\000' in
+  write_string dst str >>= fun () ->
+  Lwt_unix.close idx >>= fun () -> Lwt.return_ok ()
 (* TODO(dinosaure): [Lwt.catch] *)
+
+module SSH = struct
+  type error = Unix.error * string * string
+
+  type write_error = [ `Closed | `Error of Unix.error * string * string ]
+
+  let pp_error ppf (err, f, v) =
+    Fmt.pf ppf "%s(%s): %s" f v (Unix.error_message err)
+
+  let pp_write_error ppf = function
+    | `Closed -> Fmt.pf ppf "Connection closed by peer"
+    | `Error (err, f, v) -> Fmt.pf ppf "%s(%s): %s" f v (Unix.error_message err)
+
+  type flow = { ic : in_channel; oc : out_channel }
+
+  type endpoint = {
+    user : string;
+    path : string;
+    host : Unix.inet_addr;
+    port : int;
+  }
+
+  let pp_inet_addr ppf inet_addr =
+    Fmt.string ppf (Unix.string_of_inet_addr inet_addr)
+
+  let connect { user; path; host; port } =
+    let edn = Fmt.str "%s@%a" user pp_inet_addr host in
+    let cmd = Fmt.str {sh|git-upload-pack '%s'|sh} path in
+    let cmd = Fmt.str "ssh -p %d %s %a" port edn Fmt.(quote string) cmd in
+    try
+      let ic, oc = Unix.open_process cmd in
+      Lwt.return_ok { ic; oc }
+    with Unix.Unix_error (err, f, v) -> Lwt.return_error (`Error (err, f, v))
+
+  let read t =
+    let tmp = Bytes.create 0x1000 in
+    try
+      let len = input t.ic tmp 0 0x1000 in
+      if len = 0
+      then Lwt.return_ok `Eof
+      else Lwt.return_ok (`Data (Cstruct.of_bytes tmp ~off:0 ~len))
+    with Unix.Unix_error (err, f, v) -> Lwt.return_error (err, f, v)
+
+  let write t cs =
+    let str = Cstruct.to_string cs in
+    try
+      output_string t.oc str ;
+      flush t.oc ;
+      Lwt.return_ok ()
+    with Unix.Unix_error (err, f, v) -> Lwt.return_error (`Error (err, f, v))
+
+  let writev t css =
+    let rec go t = function
+      | [] -> Lwt.return_ok ()
+      | x :: r -> (
+          write t x >>= function
+          | Ok () -> go t r
+          | Error _ as err -> Lwt.return err) in
+    go t css
+
+  let close t =
+    close_in t.ic ;
+    close_out t.oc ;
+    Lwt.return_unit
+end
+
+let ssh_edn, ssh_protocol = Mimic.register ~name:"ssh" (module SSH)
+
+let ctx =
+  let open Mimic in
+  let k0 scheme user path host port =
+    match scheme with
+    | `SSH -> Lwt.return_some { SSH.user; path; host; port }
+    | _ -> Lwt.return_none in
+  Mimic.empty
+  |> Mimic.fold ssh_edn
+       Fun.
+         [
+           req Smart_git.git_scheme;
+           req Smart_git.git_ssh_user;
+           req Smart_git.git_path;
+           req Git_unix.inet_addr;
+           dft Smart_git.git_port 22;
+         ]
+       ~k:k0
+
+let () = Lwt_preemptive.simple_init ()
 
 let fetch edn want output block_size =
   Git.Mem.Store.v (Fpath.v ".") >|= R.reword_error store_error >>? fun store ->
@@ -191,12 +288,22 @@ let fetch edn want output block_size =
   OS.File.tmp "pack-%s.idx" |> Lwt.return >>? fun idx ->
   let create_pack_stream () = stream_of_file dst in
   let create_idx_stream () = stream_of_file idx in
-  Sync.fetch ~ctx:Git_unix.ctx edn store ~deepen:(`Depth 1)
+  let _, threads = Lwt_preemptive.get_bounds () in
+  Sync.fetch ~threads
+    ~ctx:(Mimic.merge ctx Git_unix.ctx)
+    edn store ~deepen:(`Depth 1)
     (`Some [ (want, want) ])
     ~src ~dst ~idx ~create_pack_stream ~create_idx_stream () ()
   >|= R.reword_error sync_error
   >>? function
-  | Some (_, [ (_, hash) ]) -> save dst hash output block_size
+  | Some (_, [ (_, hash) ]) ->
+      let idx_offset =
+        Int64.add
+          (Unix.LargeFile.stat (Fpath.to_string dst)).Unix.LargeFile.st_size
+          (Int64.of_int (Digestif.SHA1.digest_size + 8)) in
+      let idx_remain = Int64.sub block_size (Int64.rem idx_offset block_size) in
+      let idx_offset = Int64.add idx_offset idx_remain in
+      save ~offset:idx_offset idx dst hash output block_size
   | _ -> assert false
 
 let main _ edn want output block_size =
