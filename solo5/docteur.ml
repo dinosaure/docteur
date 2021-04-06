@@ -31,8 +31,6 @@ module SHA1 = struct
   let length = digest_size
 
   let compare a b = String.compare (to_raw_string a) (to_raw_string b)
-
-  let hash x = Hashtbl.hash (to_raw_string x)
 end
 
 module Lwt_scheduler = struct
