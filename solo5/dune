@@ -1,5 +1,6 @@
 (library
  (name docteur)
+ (modules docteur)
  (public_name docteur.solo5)
  (libraries
   hxd.string
