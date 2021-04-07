@@ -248,7 +248,7 @@ let load t key =
   let lst = Fpath.v (Mirage_kv.Key.to_string key) in
   let lst = Fpath.segs lst in
   Lwt_pool.use t.buffers (with_ressources t.pack t.root) >>= function
-  | Ok value -> fold lst t.root value
+  | Ok value -> fold (List.tl lst) t.root value
   | Error _ as err -> Lwt.return err
 
 let exists t key =
