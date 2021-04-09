@@ -1,11 +1,13 @@
 open Mirage
 
-let docteur disk =
+let docteur ?(light= false) disk =
   impl @@ object
        inherit base_configurable
        method ty = kv_ro
        method name = Fmt.str "docteur-%a" Key.pp (Key.abstract disk)
-       method module_name = "Docteur"
+       method module_name = match light with
+         | true -> "Docteur.Light"
+         | false -> "Docteur.Fast"
        method! keys = [ Key.abstract disk ]
        method! packages =
          Key.match_ Key.(value target) @@ function
@@ -18,11 +20,14 @@ let docteur disk =
            { Mirage_impl_block.filename = name; number = 0 } ;
          Ok ()
        method! connect _ _modname _ =
+         let modname = match light with
+           | true -> "Docteur.Light"
+           | false -> "Docteur.Fast" in
          Fmt.str
            {ocaml|let ( <.> ) f g = fun x -> f (g x) in
-                  let f = Rresult.R.(failwith_error_msg <.> reword_error (msgf "%%a" Docteur.pp_error)) in
-                  Lwt.map f (Docteur.connect %a)|ocaml}
-           Key.serialize_call (Key.abstract disk)
+                  let f = Rresult.R.(failwith_error_msg <.> reword_error (msgf "%%a" %s.pp_error)) in
+                  Lwt.map f (%s.connect %a)|ocaml}
+           modname modname Key.serialize_call (Key.abstract disk)
      end
 
 let disk =
