@@ -22,6 +22,21 @@ $ solo5-hvt --block:docteur=disk.img simple.hvt --filename /README.md
 ...
 ```
 
+An image can be checked by `docteur with `docteur.verify`:
+```sh
+$ docteur.verify disk.img
+commit	: 57d227d8f4808076646de35acf26dee885f2555b
+author	: "Calascibetta Romain" <romain.calascibetta@gmail.com>
+root	: 5886893922d57c1ff4871d9a6b7b2cfa48b9e9a6
+
+Merge pull request #22 from dinosaure/without-c
+
+Remove C code to be compatible with MirageOS
+```
+
+By this way, you can check the version of your snapshot and if the given
+`disk.img` is well formed for a MirageOS.
+
 ## Docteur as a file-system
 
 MirageOS does not have a file-system at the beginning. So we must implement

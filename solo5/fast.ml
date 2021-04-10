@@ -152,7 +152,7 @@ let first_pass (handle, info) =
 
   let oc = De.bigstring_create De.io_buffer_size in
   let zw = De.make_window ~bits:15 in
-  let tp = Bigstringaf.create (Int64.to_int info.block_size) in
+  let tp = ref (Bigstringaf.create (Int64.to_int info.block_size)) in
   let allocate _ = zw in
   First_pass.check_header scheduler read (handle, info) >>= fun (max, _, _) ->
   let decoder = First_pass.decoder ~o:oc ~allocate `Manual in
@@ -170,22 +170,22 @@ let first_pass (handle, info) =
         Log.debug (fun m -> m "`Await.") ;
         let offset = Int64.mul (Int64.of_int !sector) info.block_size in
         match
-          solo5_block_read handle offset tp 0 (Int64.to_int info.block_size)
+          solo5_block_read handle offset !tp 0 (Int64.to_int info.block_size)
         with
         | SOLO5_R_OK ->
             Log.debug (fun m ->
                 m "@[<hov>%a@]"
                   (Hxd_string.pp Hxd.default)
-                  (Bigstringaf.to_string tp)) ;
+                  (Bigstringaf.to_string !tp)) ;
             incr sector ;
-            go (First_pass.src decoder tp 0 (Int64.to_int info.block_size))
+            go (First_pass.src decoder !tp 0 (Int64.to_int info.block_size))
         | _ -> failwith "Block: analyze(): Cannot read ~sector:%d" !sector)
     | `Peek decoder -> (
         let offset = Int64.mul (Int64.of_int !sector) info.block_size in
         let keep = First_pass.src_rem decoder in
         Log.debug (fun m -> m "`Peek (keep %d byte(s))." keep) ;
         let tp' = Bigstringaf.create (keep + Int64.to_int info.block_size) in
-        Bigstringaf.blit tp ~src_off:0 tp' ~dst_off:0 ~len:keep ;
+        Bigstringaf.blit !tp ~src_off:0 tp' ~dst_off:0 ~len:keep ;
         match
           solo5_block_read handle offset tp' keep (Int64.to_int info.block_size)
         with
@@ -193,8 +193,9 @@ let first_pass (handle, info) =
             Log.debug (fun m ->
                 m "@[<hov>%a@]"
                   (Hxd_string.pp Hxd.default)
-                  (Bigstringaf.to_string tp)) ;
+                  (Bigstringaf.to_string !tp)) ;
             incr sector ;
+            tp := tp' ;
             go
               (First_pass.src decoder tp' 0
                  (keep + Int64.to_int info.block_size))
@@ -267,10 +268,10 @@ let first_pass (handle, info) =
         let oracle = { Carton.Dec.where; children; digest; weight } in
         return (matrix, oracle)
     | `Malformed err -> failwith "Block: analyze(): %s" err in
-  match solo5_block_read handle 0L tp 0 (Int64.to_int info.block_size) with
+  match solo5_block_read handle 0L !tp 0 (Int64.to_int info.block_size) with
   | SOLO5_R_OK ->
       let decoder =
-        First_pass.src decoder tp (SHA1.length + 8)
+        First_pass.src decoder !tp (SHA1.length + 8)
           (Int64.to_int info.block_size - SHA1.length) in
       go decoder
   | _ -> failwith "Block: analyze(): Cannot read ~sector:%d" 0
