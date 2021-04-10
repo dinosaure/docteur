@@ -172,27 +172,32 @@ let transmit cc src dst =
   go cc
 
 let save ~offset idx tmp hash output block_size =
-  Lwt_unix.openfile (Fpath.to_string output)
-    Unix.[ O_WRONLY; O_CREAT; O_TRUNC ]
-    0o644
-  >>= fun dst ->
-  Lwt_unix.openfile (Fpath.to_string tmp) Unix.[ O_RDONLY ] 0o644 >>= fun src ->
-  write_string dst (Digestif.SHA1.to_raw_string hash) >>= fun () ->
-  let serial = Bigstringaf.create 8 in
-  Bigstringaf.set_int64_le serial 0 offset ;
-  write_string dst (Bigstringaf.to_string serial) >>= fun () ->
-  transmit (Int64.of_int (Digestif.SHA1.digest_size + 8)) src dst >>= fun top ->
-  let rem = Int64.sub block_size (Int64.rem top block_size) in
-  let str = String.make (Int64.to_int rem) '\000' in
-  write_string dst str >>= fun () ->
-  Lwt_unix.close src >>= fun () ->
-  Lwt_unix.openfile (Fpath.to_string idx) Unix.[ O_RDONLY ] 0o644 >>= fun idx ->
-  transmit (Int64.add top rem) idx dst >>= fun top ->
-  let rem = Int64.sub block_size (Int64.rem top block_size) in
-  let str = String.make (Int64.to_int rem) '\000' in
-  write_string dst str >>= fun () ->
-  Lwt_unix.close idx >>= fun () -> Lwt.return_ok ()
-(* TODO(dinosaure): [Lwt.catch] *)
+  Lwt.catch (fun () ->
+      Lwt_unix.openfile (Fpath.to_string output)
+        Unix.[ O_WRONLY; O_CREAT; O_TRUNC ]
+        0o644
+      >>= fun dst ->
+      Lwt_unix.openfile (Fpath.to_string tmp) Unix.[ O_RDONLY ] 0o644
+      >>= fun src ->
+      write_string dst (Digestif.SHA1.to_raw_string hash) >>= fun () ->
+      let serial = Bigstringaf.create 8 in
+      Bigstringaf.set_int64_le serial 0 offset ;
+      write_string dst (Bigstringaf.to_string serial) >>= fun () ->
+      transmit (Int64.of_int (Digestif.SHA1.digest_size + 8)) src dst
+      >>= fun top ->
+      let rem = Int64.sub block_size (Int64.rem top block_size) in
+      let str = String.make (Int64.to_int rem) '\000' in
+      write_string dst str >>= fun () ->
+      Lwt_unix.close src >>= fun () ->
+      Lwt_unix.openfile (Fpath.to_string idx) Unix.[ O_RDONLY ] 0o644
+      >>= fun idx ->
+      transmit (Int64.add top rem) idx dst >>= fun top ->
+      let rem = Int64.sub block_size (Int64.rem top block_size) in
+      let str = String.make (Int64.to_int rem) '\000' in
+      write_string dst str >>= fun () ->
+      Lwt_unix.close idx >>= fun () -> Lwt.return_ok ())
+  @@ fun exn ->
+  Lwt.return_error (R.msgf "Internal error: %S" (Printexc.to_string exn))
 
 module SSH = struct
   type error = Unix.error * string * string
