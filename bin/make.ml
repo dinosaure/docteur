@@ -467,7 +467,9 @@ let fetch edn want date_time output block_size =
       path |> R.open_error_msg |> Lwt.return >>? fun path ->
       is_a_git_repository path >>? function
       | true -> fetch_local_git_repository edn want path output block_size
-      | false -> Gitify.gitify ?date_time path output block_size)
+      | false when Sys.file_exists (Fpath.to_string path) ->
+          Gitify.gitify ?date_time path output block_size
+      | false -> Lwt.return_error (R.msgf "%a does not exists" Fpath.pp path))
   | edn -> (
       Git.Mem.Store.v (Fpath.v ".") >|= R.reword_error store_error
       >>? fun store ->
