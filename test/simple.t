@@ -1,5 +1,5 @@
 Simple disk.img
-  $ docteur.make -d 2020-10-10T08:00:00Z file://$(pwd)/store disk.img
+  $ docteur.make -d 2020-10-10T08:00:00+00:00 file://$(pwd)/store disk.img
   $ docteur.verify disk.img
   commit	: 25ac5b5d82b599058f4aaaf3680e19549ea95d62
   author	: "Dr. Greenthumb" <noreply@cypress.hill>
