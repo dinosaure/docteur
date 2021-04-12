@@ -382,7 +382,7 @@ let git_upload_pack path ic oc =
     let open Rresult in
     OS.Cmd.run_out cat |> OS.Cmd.out_run_in >>= fun cat ->
     OS.Cmd.run_io git_upload_pack cat |> OS.Cmd.out_run_in >>= fun git ->
-    OS.Cmd.run_in tee git in
+    OS.Cmd.run_io tee git |> OS.Cmd.to_null in
   match Lwt_unix.fork () with 0 -> pipe () | _ -> R.ok ()
 
 let is_a_git_repository path =
