@@ -383,7 +383,11 @@ let git_upload_pack path ic oc =
     OS.Cmd.run_out cat |> OS.Cmd.out_run_in >>= fun cat ->
     OS.Cmd.run_io git_upload_pack cat |> OS.Cmd.out_run_in >>= fun git ->
     OS.Cmd.run_io tee git |> OS.Cmd.to_null in
-  match Lwt_unix.fork () with 0 -> pipe () | _ -> R.ok ()
+  match Lwt_unix.fork () with
+  | 0 ->
+      R.failwith_error_msg (pipe ()) ;
+      exit 0
+  | pid -> pid
 
 let is_a_git_repository path =
   Logs.debug (fun m ->
@@ -410,7 +414,7 @@ let fetch_local_git_repository edn want path output block_size =
   let tmp = Bos.OS.Dir.default_tmp () in
   make_temp_fifo 0o644 tmp "ic-%s" |> Lwt.return >>? fun ic ->
   make_temp_fifo 0o644 tmp "oc-%s" |> Lwt.return >>? fun oc ->
-  git_upload_pack path ic oc () |> R.join |> Lwt.return >>? fun () ->
+  git_upload_pack path ic oc () |> Lwt.return >>? fun pid ->
   Git.Mem.Store.v (Fpath.v ".") >|= R.reword_error store_error >>? fun store ->
   OS.File.tmp "pack-%s.pack" |> Lwt.return >>? fun src ->
   OS.File.tmp "pack-%s.pack" |> Lwt.return >>? fun dst ->
@@ -446,6 +450,7 @@ let fetch_local_git_repository edn want path output block_size =
   >|= R.reword_error sync_error
   >>? function
   | Some (_, [ (_, hash) ]) ->
+      Lwt_unix.waitpid [] pid >>= fun _ ->
       let idx_offset =
         Int64.add
           (Unix.LargeFile.stat (Fpath.to_string dst)).Unix.LargeFile.st_size
