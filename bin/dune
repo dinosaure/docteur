@@ -1,6 +1,6 @@
 (executable
  (name make)
- (modules make)
+ (modules make gitify)
  (package docteur)
  (public_name docteur.make)
  (libraries

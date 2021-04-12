@@ -402,6 +402,10 @@ let pp_host ppf = function
   | `Domain v -> Domain_name.pp ppf v
   | `Name v -> Fmt.string ppf v
 
+let root = Fpath.v "/"
+
+let () = assert (Fpath.is_root root) (* TODO(dinosaure): Windows support. *)
+
 let fetch_local_git_repository edn want path output block_size =
   let tmp = Bos.OS.Dir.default_tmp () in
   make_temp_fifo 0o644 tmp "ic-%s" |> Lwt.return >>? fun ic ->
@@ -420,8 +424,12 @@ let fetch_local_git_repository edn want path output block_size =
           host rest) ;
     match (scheme, host) with
     | `Scheme "file", `Domain v -> (
-        let path' = "/" ^ Domain_name.to_string v ^ rest in
-        match Fpath.of_string path' with
+        let path' =
+          match Fpath.of_string (Domain_name.to_string v ^ rest) with
+          | Ok v when Fpath.is_rooted ~root v -> Ok v
+          | Ok x -> Ok Fpath.(root // x)
+          | Error _ as err -> err in
+        match path' with
         | Ok path' when Fpath.equal path path' -> Lwt.return_some (ic, oc)
         | _ -> Lwt.return_none)
     | _ -> Lwt.return_none in
@@ -447,16 +455,19 @@ let fetch_local_git_repository edn want path output block_size =
       save ~offset:idx_offset idx dst hash output block_size
   | _ -> Lwt.return_error (R.msgf "%a not found" Git.Reference.pp want)
 
-let fetch edn want output block_size =
+let fetch edn want date_time output block_size =
   match edn with
   | { Smart_git.Endpoint.scheme = `Scheme "file"; path; host = `Domain v; _ }
     -> (
-      (* TODO(dinosaure): Windows support? *)
-      let path = "/" ^ Domain_name.to_string v ^ path in
-      Fpath.of_string path |> R.open_error_msg |> Lwt.return >>? fun path ->
+      let path =
+        match Fpath.of_string (Domain_name.to_string v ^ path) with
+        | Ok v when Fpath.is_rooted ~root v -> Ok v
+        | Ok x -> Ok Fpath.(root // x)
+        | Error _ as err -> err in
+      path |> R.open_error_msg |> Lwt.return >>? fun path ->
       is_a_git_repository path >>? function
       | true -> fetch_local_git_repository edn want path output block_size
-      | false -> assert false)
+      | false -> Gitify.gitify ?date_time path output block_size)
   | edn -> (
       Git.Mem.Store.v (Fpath.v ".") >|= R.reword_error store_error
       >>? fun store ->
@@ -484,8 +495,8 @@ let fetch edn want output block_size =
           save ~offset:idx_offset idx dst hash output block_size
       | _ -> Lwt.return_error (R.msgf "%a not found" Git.Reference.pp want))
 
-let main _ edn want output block_size =
-  match Lwt_main.run (fetch edn want output block_size) with
+let main _ edn want date_time output block_size =
+  match Lwt_main.run (fetch edn want date_time output block_size) with
   | Ok () -> `Ok 0
   | Error (`Msg err) -> `Error (false, Fmt.str "%s." err)
   | Error (`Store err) -> `Error (false, Fmt.str "%a." Store.pp_error err)
@@ -498,6 +509,17 @@ let endpoint = Arg.conv (Smart_git.Endpoint.of_string, Smart_git.Endpoint.pp)
 let want = Arg.conv (Git.Reference.of_string, Git.Reference.pp)
 
 let output = Arg.conv (Fpath.of_string, Fpath.pp)
+
+let date_time =
+  let parser str =
+    match Ptime.of_rfc3339 str with
+    | Ok (ptime, tz_offset_s, _) -> (
+        match Ptime.of_date (fst (Ptime.to_date_time ?tz_offset_s ptime)) with
+        | Some v -> Ok v
+        | None -> R.error_msgf "Invalid given time-zone: %S" str)
+    | Error _ -> R.error_msgf "Invalid date (RFC3339): %S" str in
+  let tz_offset_s = Ptime_clock.current_tz_offset_s () in
+  Arg.conv (parser, Ptime.pp_rfc3339 ?tz_offset_s ())
 
 let endpoint =
   let doc = "URI leading to repository." in
@@ -519,12 +541,25 @@ let block_size =
   let doc = "Write up to <bytes> bytes." in
   Arg.(value & opt int64 512L & info [ "bs" ] ~docv:"<bytes>" ~doc)
 
+let date_time =
+  let doc = "Date & Time (RFC3339)." in
+  Arg.(
+    value & opt (some date_time) None & info [ "d" ] ~docv:"<date-time>" ~doc)
+
 let setup_logs =
   Term.(const setup_logs $ Fmt_cli.style_renderer () $ Logs_cli.level ())
 
 let command =
   let doc = "Fetch and make an image disk from a Git repository." in
-  ( Term.(ret (const main $ setup_logs $ endpoint $ want $ output $ block_size)),
+  ( Term.(
+      ret
+        (const main
+        $ setup_logs
+        $ endpoint
+        $ want
+        $ date_time
+        $ output
+        $ block_size)),
     Term.info "make" ~doc )
 
 let () = Term.(exit @@ eval command)
