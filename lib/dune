@@ -1,0 +1,5 @@
+(library
+ (name analyze)
+ (modules analyze)
+ (public_name docteur.analyze)
+ (libraries art lwt carton digestif git))
