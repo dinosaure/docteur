@@ -520,13 +520,12 @@ let output = Arg.conv (Fpath.of_string, Fpath.pp)
 let date_time =
   let parser str =
     match Ptime.of_rfc3339 str with
-    | Ok (ptime, tz_offset_s, _) -> (
-        match Ptime.of_date (fst (Ptime.to_date_time ?tz_offset_s ptime)) with
-        | Some v -> Ok v
-        | None -> R.error_msgf "Invalid given time-zone: %S" str)
+    | Ok (ptime, tz_offset_s, _) -> Ok (ptime, tz_offset_s)
     | Error _ -> R.error_msgf "Invalid date (RFC3339): %S" str in
-  let tz_offset_s = Ptime_clock.current_tz_offset_s () in
-  Arg.conv (parser, Ptime.pp_rfc3339 ?tz_offset_s ())
+  Arg.conv
+    ( parser,
+      fun ppf (ptime, tz_offset_s) -> Ptime.pp_rfc3339 ?tz_offset_s () ppf ptime
+    )
 
 let endpoint =
   let doc = "URI leading to repository." in

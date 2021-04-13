@@ -103,13 +103,13 @@ let add_tree store tbl path =
   Lwt.return_ok hash
 
 let author ?date_time () =
-  let ptime =
-    match date_time with Some ptime -> ptime | None -> Ptime_clock.now () in
-  Fmt.epr ">>> SHOW ME THE TIME: %a" (Ptime.pp_human ()) ptime ;
-  Fmt.epr ">>> SHOW ME THE TIME WITH TZ: %a" (Ptime.pp_human ?tz_offset_s:(Ptime_clock.current_tz_offset_s ()) ()) ptime ;
+  let ptime, tz_offset_s =
+    match date_time with
+    | Some (ptime, tz_offset_s) -> (ptime, tz_offset_s)
+    | None -> (Ptime_clock.now (), Ptime_clock.current_tz_offset_s ()) in
   let ptime = Int64.of_float (Ptime.to_float_s ptime) in
   let tz =
-    match Ptime_clock.current_tz_offset_s () with
+    match tz_offset_s with
     | Some tz when tz < 0 ->
         let tz = abs tz in
         let hours = tz / 3600 in
