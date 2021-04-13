@@ -264,7 +264,70 @@ module SSH = struct
     Lwt.return_unit
 end
 
+module FIFO = struct
+  type flow = {
+    ic : Lwt_unix.file_descr;
+    oc : Lwt_unix.file_descr;
+    linger : Bytes.t;
+    mutable closed : bool;
+  }
+
+  type endpoint = Fpath.t * Fpath.t
+
+  type error = |
+
+  type write_error = [ `Closed ]
+
+  let pp_error : error Fmt.t = fun _ppf -> function _ -> .
+
+  let closed_by_peer = "Closed by peer"
+
+  let pp_write_error ppf = function `Closed -> Fmt.string ppf closed_by_peer
+
+  let io_buffer_size = 65536
+
+  let connect (ic, oc) =
+    let open Lwt.Infix in
+    Lwt_unix.openfile (Fpath.to_string ic) Unix.[ O_RDONLY ] 0o600 >>= fun ic ->
+    Lwt_unix.openfile (Fpath.to_string oc) Unix.[ O_WRONLY ] 0o600 >>= fun oc ->
+    Lwt.return_ok
+      { ic; oc; linger = Bytes.create io_buffer_size; closed = false }
+
+  let read { ic; linger; closed; _ } =
+    if closed
+    then Lwt.return_ok `Eof
+    else
+      Lwt_unix.read ic linger 0 (Bytes.length linger) >>= function
+      | 0 -> Lwt.return_ok `Eof
+      | len -> Lwt.return_ok (`Data (Cstruct.of_bytes linger ~off:0 ~len))
+
+  let write { oc; closed; _ } cs =
+    if closed
+    then Lwt.return_error `Closed
+    else
+      let rec go ({ Cstruct.buffer; off; len } as cs) =
+        if len = 0
+        then Lwt.return_ok ()
+        else
+          Lwt_bytes.write oc buffer off len >>= fun len ->
+          go (Cstruct.shift cs len) in
+      go cs
+
+  let writev t css =
+    let rec go = function
+      | [] -> Lwt.return_ok ()
+      | hd :: tl -> (
+          write t hd >>= function
+          | Ok () -> go tl
+          | Error _ as err -> Lwt.return err) in
+    go css
+
+  let close t = Lwt_unix.close t.ic >>= fun () -> Lwt_unix.close t.oc
+end
+
 let ssh_edn, ssh_protocol = Mimic.register ~name:"ssh" (module SSH)
+
+let fifo_edn, fifo_protocol = Mimic.register ~name:"fifo" (module FIFO)
 
 let ctx =
   let open Mimic in
@@ -286,7 +349,72 @@ let ctx =
 
 let () = Lwt_preemptive.simple_init ()
 
-let fetch edn want output block_size =
+let make_temp_fifo mode dir pat =
+  let err () =
+    R.error_msgf "create temporary fifo %s in %a: too many failing attempts"
+      (Fmt.str pat "XXXXXX") Fpath.pp dir in
+  let rec loop count =
+    if count < 0
+    then err ()
+    else
+      let file =
+        let rand = Random.bits () land 0xffffff in
+        Fpath.(dir / Fmt.str pat (Fmt.str "%06x" rand)) in
+      let sfile = Fpath.to_string file in
+      try
+        Unix.mkfifo sfile mode ;
+        Ok file
+      with
+      | Unix.Unix_error (Unix.EEXIST, _, _) -> loop (count - 1)
+      | Unix.Unix_error (Unix.EINTR, _, _) -> loop count
+      | Unix.Unix_error (e, _, _) ->
+          R.error_msgf "create temporary fifo %a: %s" Fpath.pp file
+            (Unix.error_message e) in
+  loop 1000
+
+let git_upload_pack path ic oc =
+  let open Bos in
+  OS.Dir.with_current path @@ fun () ->
+  let tee = Cmd.(v "tee" % Fpath.to_string ic) in
+  let cat = Cmd.(v "cat" % Fpath.to_string oc) in
+  let git_upload_pack = Cmd.(v "git-upload-pack" % ".") in
+  let pipe () =
+    let open Rresult in
+    OS.Cmd.run_out cat |> OS.Cmd.out_run_in >>= fun cat ->
+    OS.Cmd.run_io git_upload_pack cat |> OS.Cmd.out_run_in >>= fun git ->
+    OS.Cmd.run_io tee git |> OS.Cmd.to_null in
+  match Lwt_unix.fork () with
+  | 0 ->
+      R.failwith_error_msg (pipe ()) ;
+      exit 0
+  | pid -> pid
+
+let is_a_git_repository path =
+  Logs.debug (fun m ->
+      m "%a is a Git repository?" Fpath.pp Fpath.(path / ".git")) ;
+  Bos.OS.Dir.exists Fpath.(path / ".git") |> Lwt.return
+
+let pp_scheme ppf = function
+  | `Scheme scheme -> Fmt.pf ppf "%s://" scheme
+  | `SSH -> Fmt.pf ppf "ssh://"
+  | `HTTP -> Fmt.pf ppf "http://"
+  | `HTTPS -> Fmt.pf ppf "https://"
+  | `Git -> Fmt.pf ppf "git://"
+
+let pp_host ppf = function
+  | `Addr addr -> Ipaddr.pp ppf addr
+  | `Domain v -> Domain_name.pp ppf v
+  | `Name v -> Fmt.string ppf v
+
+let root = Fpath.v "/"
+
+let () = assert (Fpath.is_root root) (* TODO(dinosaure): Windows support. *)
+
+let fetch_local_git_repository edn want path output block_size =
+  let tmp = Bos.OS.Dir.default_tmp () in
+  make_temp_fifo 0o644 tmp "ic-%s" |> Lwt.return >>? fun ic ->
+  make_temp_fifo 0o644 tmp "oc-%s" |> Lwt.return >>? fun oc ->
+  git_upload_pack path ic oc () |> Lwt.return >>? fun pid ->
   Git.Mem.Store.v (Fpath.v ".") >|= R.reword_error store_error >>? fun store ->
   OS.File.tmp "pack-%s.pack" |> Lwt.return >>? fun src ->
   OS.File.tmp "pack-%s.pack" |> Lwt.return >>? fun dst ->
@@ -294,14 +422,35 @@ let fetch edn want output block_size =
   let create_pack_stream () = stream_of_file dst in
   let create_idx_stream () = stream_of_file idx in
   let _, threads = Lwt_preemptive.get_bounds () in
-  Sync.fetch ~threads
-    ~ctx:(Mimic.merge ctx Git_unix.ctx)
-    edn store ~deepen:(`Depth 1)
+  let k0 scheme host rest =
+    Logs.debug (fun m ->
+        m "Try to resolve scheme:%a, host:%a, path:%s." pp_scheme scheme pp_host
+          host rest) ;
+    match (scheme, host) with
+    | `Scheme "file", `Domain v -> (
+        let path' =
+          match Fpath.of_string (Domain_name.to_string v ^ rest) with
+          | Ok v when Fpath.is_rooted ~root v -> Ok v
+          | Ok x -> Ok Fpath.(root // x)
+          | Error _ as err -> err in
+        match path' with
+        | Ok path' when Fpath.equal path path' -> Lwt.return_some (ic, oc)
+        | _ -> Lwt.return_none)
+    | _ -> Lwt.return_none in
+  let ctx =
+    let open Mimic in
+    let open Smart_git in
+    Mimic.empty
+    |> Mimic.fold fifo_edn
+         Fun.[ req git_scheme; req git_host; req git_path ]
+         ~k:k0 in
+  Sync.fetch ~threads ~ctx edn store ~deepen:(`Depth 1)
     (`Some [ (want, want) ])
     ~src ~dst ~idx ~create_pack_stream ~create_idx_stream () ()
   >|= R.reword_error sync_error
   >>? function
   | Some (_, [ (_, hash) ]) ->
+      Lwt_unix.waitpid [] pid >>= fun _ ->
       let idx_offset =
         Int64.add
           (Unix.LargeFile.stat (Fpath.to_string dst)).Unix.LargeFile.st_size
@@ -309,10 +458,52 @@ let fetch edn want output block_size =
       let idx_remain = Int64.sub block_size (Int64.rem idx_offset block_size) in
       let idx_offset = Int64.add idx_offset idx_remain in
       save ~offset:idx_offset idx dst hash output block_size
-  | _ -> assert false
+  | _ -> Lwt.return_error (R.msgf "%a not found" Git.Reference.pp want)
 
-let main _ edn want output block_size =
-  match Lwt_main.run (fetch edn want output block_size) with
+let fetch edn want date_time output block_size =
+  match edn with
+  | { Smart_git.Endpoint.scheme = `Scheme "file"; path; host = `Domain v; _ }
+    -> (
+      let path =
+        match Fpath.of_string (Domain_name.to_string v ^ path) with
+        | Ok v when Fpath.is_rooted ~root v -> Ok v
+        | Ok x -> Ok Fpath.(root // x)
+        | Error _ as err -> err in
+      path |> R.open_error_msg |> Lwt.return >>? fun path ->
+      is_a_git_repository path >>? function
+      | true -> fetch_local_git_repository edn want path output block_size
+      | false when Sys.file_exists (Fpath.to_string path) ->
+          Gitify.gitify ?date_time path output block_size
+      | false -> Lwt.return_error (R.msgf "%a does not exists" Fpath.pp path))
+  | edn -> (
+      Git.Mem.Store.v (Fpath.v ".") >|= R.reword_error store_error
+      >>? fun store ->
+      OS.File.tmp "pack-%s.pack" |> Lwt.return >>? fun src ->
+      OS.File.tmp "pack-%s.pack" |> Lwt.return >>? fun dst ->
+      OS.File.tmp "pack-%s.idx" |> Lwt.return >>? fun idx ->
+      let create_pack_stream () = stream_of_file dst in
+      let create_idx_stream () = stream_of_file idx in
+      let _, threads = Lwt_preemptive.get_bounds () in
+      Sync.fetch ~threads
+        ~ctx:(Mimic.merge ctx Git_unix.ctx)
+        edn store ~deepen:(`Depth 1)
+        (`Some [ (want, want) ])
+        ~src ~dst ~idx ~create_pack_stream ~create_idx_stream () ()
+      >|= R.reword_error sync_error
+      >>? function
+      | Some (_, [ (_, hash) ]) ->
+          let idx_offset =
+            Int64.add
+              (Unix.LargeFile.stat (Fpath.to_string dst)).Unix.LargeFile.st_size
+              (Int64.of_int (Digestif.SHA1.digest_size + 8)) in
+          let idx_remain =
+            Int64.sub block_size (Int64.rem idx_offset block_size) in
+          let idx_offset = Int64.add idx_offset idx_remain in
+          save ~offset:idx_offset idx dst hash output block_size
+      | _ -> Lwt.return_error (R.msgf "%a not found" Git.Reference.pp want))
+
+let main _ edn want date_time output block_size =
+  match Lwt_main.run (fetch edn want date_time output block_size) with
   | Ok () -> `Ok 0
   | Error (`Msg err) -> `Error (false, Fmt.str "%s." err)
   | Error (`Store err) -> `Error (false, Fmt.str "%a." Store.pp_error err)
@@ -326,6 +517,16 @@ let want = Arg.conv (Git.Reference.of_string, Git.Reference.pp)
 
 let output = Arg.conv (Fpath.of_string, Fpath.pp)
 
+let date_time =
+  let parser str =
+    match Ptime.of_rfc3339 str with
+    | Ok (ptime, tz_offset_s, _) -> Ok (ptime, tz_offset_s)
+    | Error _ -> R.error_msgf "Invalid date (RFC3339): %S" str in
+  Arg.conv
+    ( parser,
+      fun ppf (ptime, tz_offset_s) -> Ptime.pp_rfc3339 ?tz_offset_s () ppf ptime
+    )
+
 let endpoint =
   let doc = "URI leading to repository." in
   Arg.(
@@ -333,22 +534,38 @@ let endpoint =
 
 let want =
   let doc = "Reference to pull." in
-  Arg.(required & pos 1 (some want) None & info [] ~docv:"<reference>" ~doc)
+  Arg.(
+    value
+    & opt want Git.Reference.master
+    & info [ "b"; "branch" ] ~docv:"<reference>" ~doc)
 
 let output =
   let doc = "Disk image." in
-  Arg.(required & pos 2 (some output) None & info [] ~docv:"<filename>" ~doc)
+  Arg.(required & pos 1 (some output) None & info [] ~docv:"<filename>" ~doc)
 
 let block_size =
   let doc = "Write up to <bytes> bytes." in
   Arg.(value & opt int64 512L & info [ "bs" ] ~docv:"<bytes>" ~doc)
+
+let date_time =
+  let doc = "Date & Time (RFC3339)." in
+  Arg.(
+    value & opt (some date_time) None & info [ "d" ] ~docv:"<date-time>" ~doc)
 
 let setup_logs =
   Term.(const setup_logs $ Fmt_cli.style_renderer () $ Logs_cli.level ())
 
 let command =
   let doc = "Fetch and make an image disk from a Git repository." in
-  ( Term.(ret (const main $ setup_logs $ endpoint $ want $ output $ block_size)),
+  ( Term.(
+      ret
+        (const main
+        $ setup_logs
+        $ endpoint
+        $ want
+        $ date_time
+        $ output
+        $ block_size)),
     Term.info "make" ~doc )
 
 let () = Term.(exit @@ eval command)

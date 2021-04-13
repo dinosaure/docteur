@@ -1,0 +1,5 @@
+(cram
+ (deps
+  (source_tree store)
+  %{bin:docteur.make}
+  %{bin:docteur.verify}))
