@@ -1,7 +1,7 @@
 open Mirage
 
 let pp_mode ppf = function
-  | `Ligth -> Fmt.string ppf "Ligth"
+  | `Light -> Fmt.string ppf "Light"
   | `Fast -> Fmt.string ppf "Fast"
 
 let docteur_unix ?(mode= `Fast) disk =
