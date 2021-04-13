@@ -33,6 +33,15 @@ depends: [
   "mirage-solo5" {>= "0.6.4"}
   "mirage-unix" {>= "4.0.0"}
   "mirage" {with-test}
+  "functoria-runtime" {with-test}
+  "mirage-bootvar-unix" {with-test & >= "0.1.0" & < "0.2.0"}
+  "mirage-clock-unix" {with-test & >= "3.0.0" & < "4.0.0"}
+  "mirage-console-unix" {with-test & >= "4.0.0" & < "5.0.0"}
+  "mirage-logs" {with-test & >= "1.2.0" & < "2.0.0"}
+  "mirage-runtime" {with-test & >= "3.10.0" & < "3.11.0"}
+  "mirage-types" {with-test & >= "3.10.0" & < "3.11.0"}
+  "mirage-types-lwt" {with-test & >= "3.10.0" & < "3.11.0"}
+  "mirage-unix" {with-test & >= "4.0.0" & < "5.0.0"}
 ]
 build: ["dune" "build" "-p" name "-j" jobs]
 run-test: ["dune" "runtest" "-p" name "-j" jobs]
