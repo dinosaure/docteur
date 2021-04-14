@@ -17,9 +17,18 @@ $ opam pin add -y .
 $ cd unikernel
 $ docteur.make https://github.com/dinosaure/docteur refs/heads/main disk.img
 $ mirage configure -t hvt --disk docteur
+$ make depends
 $ mirage build
 $ solo5-hvt --block:docteur=disk.img simple.hvt --filename /README.md
 ...
+```
+
+**NOTE:** For `mirage -t unix`, the disk name is the filename:
+```sh
+$ mirage configure -t unix --disk disk.img
+$ mirage build
+$ make depends
+$ ./simple --filename /README.md
 ```
 
 An image can be checked by `docteur with `docteur.verify`:
@@ -37,19 +46,37 @@ Remove C code to be compatible with MirageOS
 By this way, you can check the version of your snapshot and if the given
 `disk.img` is well formed for a MirageOS.
 
+Docteur is able to _save_ a remote Git repository, a local Git repository or a
+simple directory:
+``` sh
+$ docteur.make git@github.com:dinosaure/docteur disk.img
+$ docteur.make https://github.com/dinosaure/docteur disk.img
+$ docteur.make https://user:password@github.com/dinosaure/docteur disk.img
+$ docteur.make git://github.com/dinosaure/docteur disk.img
+$ docteur.make file://$(pwd/ disk.img 
+  ; assume that $(pwd) is a local Git repository
+  ; $(pwd)/.git exists
+$ docteur.make file://$(pwd)/ disk.img
+  ; or it's a simple directory
+```
+
+**NOTE:** The last example can be less efficient (about compression) than
+others because we directly use our own way to generate a PACK file (which is
+less smart than `git`).
+
 ## Docteur as a file-system
 
-MirageOS does not have a file-system at the beginning. So we must implement
-one to get the idea of files and directories. Multiple designs exist and no
-one are perfect for any cases.
+MirageOS does not have a file-system at the beginning. So we must implement one
+to get the idea of files and directories. Multiple designs exist and no one are
+perfect for any cases.
 
 However, `docteur` exists as one possible "file-system" for MirageOS. It's not
 the only one but it deserves a special case. Indeed, you can look into
 [irmin][irmin] and [ocaml-git][ocaml-git] for an other one.
 
 Docteur provides only a read-only file-system and contents are not a part of
-the _unikernel_. Only _meta-data_ are in the _unikernel_. Let me explain a
-bit the format.
+the _unikernel_. Only _meta-data_ are in the _unikernel_. Let me explain a bit
+the format.
 
 ## The PACK file
 
@@ -73,8 +100,8 @@ to the content.
 Finally, contents of objects (files or directories) and where they are from
 their hashes into the PACK file are statically produced by `docteur.make`:
 ```sh
-$ docteur.make <repository> <refs> <image>
-$ docteur.make https://github.com/dinosaure/docteur refs/heads/main disk.img
+$ docteur.make <repository> [-b <refs>] <image>
+$ docteur.make https://github.com/dinosaure/docteur -b refs/heads/main disk.img
 ```
 
 However, the indexation of objects is done by their hashes. It's not done by
