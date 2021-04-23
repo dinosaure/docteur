@@ -46,25 +46,3 @@ depends: [
 build: ["dune" "build" "-p" name "-j" jobs]
 run-test: ["dune" "runtest" "-p" name "-j" jobs]
 dev-repo: "git+https://github.com/dinosaure/kaveero.git"
-pin-depends: [
-  [
-    "carton.0.4.0"
-    "git+https://github.com/mirage/ocaml-git.git#7a3dfa2454eb31d4a7f91d433eaa66a37f8148df"
-  ]
-  [
-    "carton-git.0.4.0"
-    "git+https://github.com/mirage/ocaml-git.git#7a3dfa2454eb31d4a7f91d433eaa66a37f8148df"
-  ]
-  [
-    "git.3.3.3"
-    "git+https://github.com/mirage/ocaml-git.git#7a3dfa2454eb31d4a7f91d433eaa66a37f8148df"
-  ]
-  [
-    "git-unix.3.3.3"
-    "git+https://github.com/mirage/ocaml-git.git#7a3dfa2454eb31d4a7f91d433eaa66a37f8148df"
-  ]
-  [
-    "art.dev"
-    "git+https://github.com/dinosaure/art.git#7ed64f90adb484f40329685283156993d04c7c03"
-  ]
-]
