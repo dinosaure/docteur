@@ -266,9 +266,7 @@ let rec fold ~block_size ~get_block pack directories files path hash =
         | Ok _, `Dir ->
             let path = Fpath.(path / name) in
             Art.insert directories (Art.key (Fpath.to_string path)) node ;
-            fold ~block_size ~get_block pack directories files
-              Fpath.(path / name)
-              node
+            fold ~block_size ~get_block pack directories files path node
         | Ok _, (`Everybody | `Normal) ->
             let path = Fpath.(path / name) in
             Art.insert files (Art.key (Fpath.to_string path)) node ;
