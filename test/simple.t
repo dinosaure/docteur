@@ -9,7 +9,6 @@ Simple disk.img
   $ cp disk.img ../unikernel/
   $ cd ../unikernel/
   $ mirage configure -t unix --disk disk.img
-  $ make depends > /dev/null 2> /dev/null
   $ mirage build > /dev/null 2> /dev/null
   $ ./simple --filename /README.md > out.result
   $ cd -
