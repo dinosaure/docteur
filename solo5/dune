@@ -1,6 +1,6 @@
 (library
  (name docteur_solo5)
- (public_name docteur.solo5)
+ (public_name docteur-solo5)
  (libraries
   docteur.analyze
   hxd.string

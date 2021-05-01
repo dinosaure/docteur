@@ -1,6 +1,6 @@
 (library
  (name docteur_unix)
- (public_name docteur.unix)
+ (public_name docteur-unix)
  (libraries
   logs
   docteur.analyze
