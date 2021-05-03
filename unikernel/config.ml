@@ -11,7 +11,7 @@ let docteur_unix ?(mode= `Fast) disk =
        method name = Fmt.str "docteur-unix-%a" Key.pp (Key.abstract disk)
        method module_name = Fmt.str "Docteur_unix.%a" pp_mode mode
        method! keys = [ Key.abstract disk ]
-       method! packages = Key.pure [ package "docteur" ~sublibs:[ "unix" ] ]
+       method! packages = Key.pure [ package "docteur-unix" ]
        method! configure info =
          let ctx = Info.context info in
          let name = Option.get (Key.get ctx disk) in
@@ -33,7 +33,7 @@ let docteur_solo5 ?(mode= `Fast) disk =
        method name = Fmt.str "docteur-solo5-%a" Key.pp (Key.abstract disk)
        method module_name = Fmt.str "Docteur_solo5.%a" pp_mode mode
        method! keys = [ Key.abstract disk ]
-       method! packages = Key.pure [ package "docteur" ~sublibs:[ "solo5" ] ]
+       method! packages = Key.pure [ package "docteur-solo5" ]
        method! configure info =
          let ctx = Info.context info in
          let name = Option.get (Key.get ctx disk) in
