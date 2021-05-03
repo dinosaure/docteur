@@ -21,6 +21,17 @@ depends: [
   "logs" {>= "0.7.0"}
   "lwt" {>= "5.4.0"}
   "mirage-kv" {>= "3.0.1"}
+  "mirage" {with-test}
+  "mirage-unix" {with-test}
+  "mirage-bootvar-unix" {with-test}
+  "mirage-clock-unix" {with-test}
+  "mirage-console-unix" {with-test}
+  "mirage-logs" {with-test}
+  "mirage-channel" {with-test}
+  "mirage-fs" {with-test}
+  "mirage-block" {with-test}
+  "mirage-types" {with-test}
+  "mirage-types-lwt" {with-test}
 ]
 build: ["dune" "build" "-p" name "-j" jobs]
 run-test: ["dune" "runtest" "-p" name "-j" jobs]

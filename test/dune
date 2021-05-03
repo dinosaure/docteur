@@ -1,4 +1,5 @@
 (cram
+ (package docteur-unix)
  (deps
   (source_tree store)
   %{bin:docteur.make}
