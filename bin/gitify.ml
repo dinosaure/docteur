@@ -167,9 +167,12 @@ let deltify store hashes =
           match kind with
           | `Commit ->
               Carton.Enc.make_entry ~kind:`A ~length:(Cstruct.length v) hash
-          | `Tree -> Carton.Enc.make_entry ~kind:`B ~length:(Cstruct.length v) hash
-          | `Blob -> Carton.Enc.make_entry ~kind:`C ~length:(Cstruct.length v) hash
-          | `Tag -> Carton.Enc.make_entry ~kind:`D ~length:(Cstruct.length v) hash
+          | `Tree ->
+              Carton.Enc.make_entry ~kind:`B ~length:(Cstruct.length v) hash
+          | `Blob ->
+              Carton.Enc.make_entry ~kind:`C ~length:(Cstruct.length v) hash
+          | `Tag ->
+              Carton.Enc.make_entry ~kind:`D ~length:(Cstruct.length v) hash
         in
         Lwt.return (entry :: acc) in
   Lwt_list.fold_left_s fold [] hashes >|= Array.of_list >>= fun entries ->
