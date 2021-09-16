@@ -15,7 +15,7 @@ $ git clone https://github.com/dinosaure/docteur
 $ cd docteur
 $ opam pin add -y .
 $ cd unikernel
-$ docteur.make https://github.com/dinosaure/docteur refs/heads/main disk.img
+$ docteur.make https://github.com/dinosaure/docteur -b refs/heads/main disk.img
 $ mirage configure -t hvt --disk docteur
 $ make depends
 $ mirage build
@@ -53,7 +53,7 @@ $ docteur.make git@github.com:dinosaure/docteur disk.img
 $ docteur.make https://github.com/dinosaure/docteur disk.img
 $ docteur.make https://user:password@github.com/dinosaure/docteur disk.img
 $ docteur.make git://github.com/dinosaure/docteur disk.img
-$ docteur.make file://$(pwd/ disk.img 
+$ docteur.make file://$(pwd)/ disk.img 
   ; assume that $(pwd) is a local Git repository
   ; $(pwd)/.git exists
 $ docteur.make file://$(pwd)/ disk.img
