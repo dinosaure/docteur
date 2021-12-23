@@ -6,9 +6,7 @@ let src = Logs.Src.create "gitify" ~doc:"logs gitify's fold event"
 module Log = (val Logs.src_log src : Logs.LOG)
 
 let ( <.> ) f g x = f (g x)
-
 let ( >>? ) = Lwt_result.bind
-
 let failwith fmt = Fmt.kstr failwith fmt
 
 module Fold = struct
@@ -140,7 +138,6 @@ module Verbose = struct
   type 'a fiber = 'a Lwt.t
 
   let succ _ = Lwt.return_unit
-
   let print _ = Lwt.return_unit
 end
 
@@ -148,11 +145,8 @@ module SHA1 = struct
   include Digestif.SHA1
 
   let hash x = Hashtbl.hash x
-
   let length = digest_size
-
   let compare a b = String.compare (to_raw_string a) (to_raw_string b)
-
   let feed = feed_bigstring
 end
 

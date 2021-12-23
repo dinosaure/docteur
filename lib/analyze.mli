@@ -1,11 +1,9 @@
 module SHA1 : sig
   include Carton.UID with type t = Digestif.SHA1.t
-
   include Digestif.S with type t := t and type ctx := ctx
 end
 
 module Scheduler : Carton.SCHEDULER with type +'a s = 'a Lwt.t
-
 module Lwt_scheduler : Carton.IO with type +'a t = 'a Lwt.t
 
 module Verify :

@@ -25,7 +25,6 @@
   git.nss.git
   mmap
   unix
-  git-cohttp-unix
   bos))
 
 (executable
@@ -55,5 +54,4 @@
   git.nss.git
   mmap
   unix
-  git-cohttp-unix
   bos))

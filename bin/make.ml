@@ -2,12 +2,10 @@ open Rresult
 open Lwt.Infix
 
 let ( >>? ) = Lwt_result.bind
-
 let () = Random.self_init ()
 
 module Append = struct
   type 'a rd = < rd : unit ; .. > as 'a
-
   type 'a wr = < wr : unit ; .. > as 'a
 
   type 'a mode =
@@ -16,13 +14,9 @@ module Append = struct
     | RdWr : < rd : unit ; wr : unit > mode
 
   type t = unit
-
   type uid = Fpath.t
-
   type 'a fd = Lwt_unix.file_descr
-
   type error = Unix.error * string * string
-
   type +'a fiber = 'a Lwt.t
 
   let pp_error ppf (err, f, v) =
@@ -78,8 +72,7 @@ module Store = struct
   let batch_write _store _hash ~pck:_ ~idx:_ = Lwt.return_ok ()
 end
 
-module Sync =
-  Git.Sync.Make (Digestif.SHA1) (Append) (Append) (Store) (Git_cohttp_unix)
+module Sync = Git.Sync.Make (Digestif.SHA1) (Append) (Append) (Store)
 
 let src = Logs.Src.create "guit-mk" ~doc:"logs binary event"
 
@@ -150,7 +143,6 @@ let stream_of_file filename =
 open Bos
 
 let store_error err = `Store err
-
 let sync_error err = `Sync err
 
 let write_string fd str =
@@ -201,7 +193,6 @@ let save ~offset idx tmp hash output block_size =
 
 module SSH = struct
   type error = Unix.error * string * string
-
   type write_error = [ `Closed | `Error of Unix.error * string * string ]
 
   let pp_error ppf (err, f, v) =
@@ -273,17 +264,12 @@ module FIFO = struct
   }
 
   type endpoint = Fpath.t * Fpath.t
-
   type error = |
-
   type write_error = [ `Closed ]
 
   let pp_error : error Fmt.t = fun _ppf -> function _ -> .
-
   let closed_by_peer = "Closed by peer"
-
   let pp_write_error ppf = function `Closed -> Fmt.string ppf closed_by_peer
-
   let io_buffer_size = 65536
 
   let connect (ic, oc) =
@@ -326,23 +312,93 @@ module FIFO = struct
 end
 
 let ssh_edn, ssh_protocol = Mimic.register ~name:"ssh" (module SSH)
-
 let fifo_edn, fifo_protocol = Mimic.register ~name:"fifo" (module FIFO)
 
-let ctx =
+module HTTP = struct
+  type state =
+    | Handshake
+    | Get of {
+        advertised_refs : string;
+        uri : Uri.t;
+        headers : (string * string) list;
+        ctx : Mimic.ctx;
+      }
+    | Post of {
+        mutable output : string;
+        uri : Uri.t;
+        headers : (string * string) list;
+        ctx : Mimic.ctx;
+      }
+    | Error
+
+  type flow = state ref
+  type error = [ `Msg of string ]
+  type write_error = [ `Closed | `Msg of string ]
+
+  let pp_error ppf (`Msg err) = Fmt.string ppf err
+
+  let pp_write_error ppf = function
+    | `Closed -> Fmt.string ppf "Connection closed by peer"
+    | `Msg err -> Fmt.string ppf err
+
+  let write t cs =
+    match t.contents with
+    | Handshake | Get _ -> Lwt.return_error (`Msg "Handshake has not been done")
+    | Error -> Lwt.return_error (`Msg "Handshake got an error")
+    | Post ({ output; _ } as v) ->
+        let output = output ^ Cstruct.to_string cs in
+        v.output <- output ;
+        Lwt.return_ok ()
+
+  let writev t css =
+    let rec go = function
+      | [] -> Lwt.return_ok ()
+      | x :: r -> (
+          write t x >>= function
+          | Ok () -> go r
+          | Error _ as err -> Lwt.return err) in
+    go css
+
+  let read t =
+    match t.contents with
+    | Handshake -> Lwt.return_error (`Msg "Handshake has not been done")
+    | Error -> Lwt.return_error (`Msg "Handshake got an error")
+    | Get { advertised_refs; uri; headers; ctx } ->
+        t.contents <- Post { output = ""; uri; headers; ctx } ;
+        Lwt.return_ok (`Data (Cstruct.of_string advertised_refs))
+    | Post { output; uri; headers; ctx } -> (
+        Git_paf.post ~ctx ~headers uri output >>= function
+        | Ok (_resp, contents) ->
+            Lwt.return_ok (`Data (Cstruct.of_string contents))
+        | Error err ->
+            Lwt.return_error (`Msg (Fmt.str "%a" Git_paf.pp_error err)))
+
+  let close _ = Lwt.return_unit
+
+  type endpoint = HTTP_endpoint
+
+  let connect HTTP_endpoint = Lwt.return_ok { contents = Handshake }
+end
+
+let unix_ctx_with_ssh () =
+  Git_unix.ctx (Happy_eyeballs_lwt.create ()) >|= fun ctx ->
   let open Mimic in
   let k0 scheme user path host port =
-    match scheme with
-    | `SSH -> Lwt.return_some { SSH.user; path; host; port }
+    match (scheme, Unix.gethostbyname host) with
+    | `SSH, { Unix.h_addr_list; _ } when Array.length h_addr_list > 0 ->
+        Lwt.return_some { SSH.user; path; host = h_addr_list.(0); port }
     | _ -> Lwt.return_none in
-  Mimic.empty
+  ctx
+  |> Mimic.fold Smart_git.git_transmission
+       Fun.[ req Smart_git.git_scheme ]
+       ~k:(function `SSH -> Lwt.return_some `Exec | _ -> Lwt.return_none)
   |> Mimic.fold ssh_edn
        Fun.
          [
            req Smart_git.git_scheme;
            req Smart_git.git_ssh_user;
            req Smart_git.git_path;
-           req Git_unix.inet_addr;
+           req Smart_git.git_hostname;
            dft Smart_git.git_port 22;
          ]
        ~k:k0
@@ -407,7 +463,6 @@ let pp_host ppf = function
   | `Name v -> Fmt.string ppf v
 
 let root = Fpath.v "/"
-
 let () = assert (Fpath.is_root root) (* TODO(dinosaure): Windows support. *)
 
 let fetch_local_git_repository edn want path output block_size =
@@ -424,12 +479,12 @@ let fetch_local_git_repository edn want path output block_size =
   let _, threads = Lwt_preemptive.get_bounds () in
   let k0 scheme host rest =
     Logs.debug (fun m ->
-        m "Try to resolve scheme:%a, host:%a, path:%s." pp_scheme scheme pp_host
-          host rest) ;
-    match (scheme, host) with
-    | `Scheme "file", `Domain v -> (
+        m "Try to resolve scheme:%a, host:%s, path:%s." pp_scheme scheme host
+          rest) ;
+    match scheme with
+    | `Scheme "file" -> (
         let path' =
-          match Fpath.of_string (Domain_name.to_string v ^ rest) with
+          match Fpath.of_string (host ^ rest) with
           | Ok v when Fpath.is_rooted ~root v -> Ok v
           | Ok x -> Ok Fpath.(root // x)
           | Error _ as err -> err in
@@ -441,8 +496,12 @@ let fetch_local_git_repository edn want path output block_size =
     let open Mimic in
     let open Smart_git in
     Mimic.empty
+    |> Mimic.fold git_transmission
+         Fun.[ req git_scheme ]
+         ~k:(function
+           | `Scheme "file" -> Lwt.return_some `Exec | _ -> Lwt.return_none)
     |> Mimic.fold fifo_edn
-         Fun.[ req git_scheme; req git_host; req git_path ]
+         Fun.[ req git_scheme; req git_hostname; req git_path ]
          ~k:k0 in
   Sync.fetch ~threads ~ctx edn store ~deepen:(`Depth 1)
     (`Some [ (want, want) ])
@@ -462,10 +521,9 @@ let fetch_local_git_repository edn want path output block_size =
 
 let fetch edn want date_time output block_size =
   match edn with
-  | { Smart_git.Endpoint.scheme = `Scheme "file"; path; host = `Domain v; _ }
-    -> (
+  | { Smart_git.Endpoint.scheme = `Scheme "file"; path; hostname; _ } -> (
       let path =
-        match Fpath.of_string (Domain_name.to_string v ^ path) with
+        match Fpath.of_string (hostname ^ path) with
         | Ok v when Fpath.is_rooted ~root v -> Ok v
         | Ok x -> Ok Fpath.(root // x)
         | Error _ as err -> err in
@@ -476,6 +534,7 @@ let fetch edn want date_time output block_size =
           Gitify.gitify ?date_time path output block_size
       | false -> Lwt.return_error (R.msgf "%a does not exists" Fpath.pp path))
   | edn -> (
+      unix_ctx_with_ssh () >>= fun ctx ->
       Git.Mem.Store.v (Fpath.v ".") >|= R.reword_error store_error
       >>? fun store ->
       OS.File.tmp "pack-%s.pack" |> Lwt.return >>? fun src ->
@@ -484,9 +543,7 @@ let fetch edn want date_time output block_size =
       let create_pack_stream () = stream_of_file dst in
       let create_idx_stream () = stream_of_file idx in
       let _, threads = Lwt_preemptive.get_bounds () in
-      Sync.fetch ~threads
-        ~ctx:(Mimic.merge ctx Git_unix.ctx)
-        edn store ~deepen:(`Depth 1)
+      Sync.fetch ~threads ~ctx edn store ~deepen:(`Depth 1)
         (`Some [ (want, want) ])
         ~src ~dst ~idx ~create_pack_stream ~create_idx_stream () ()
       >|= R.reword_error sync_error
@@ -512,9 +569,7 @@ let main _ edn want date_time output block_size =
 open Cmdliner
 
 let endpoint = Arg.conv (Smart_git.Endpoint.of_string, Smart_git.Endpoint.pp)
-
 let want = Arg.conv (Git.Reference.of_string, Git.Reference.pp)
-
 let output = Arg.conv (Fpath.of_string, Fpath.pp)
 
 let date_time =
