@@ -24,7 +24,6 @@ module Log = (val Logs.src_log src : Logs.LOG)
 exception Unspecified of string
 
 let invalid_arg fmt = Fmt.kstr invalid_arg fmt
-
 let unspecified fmt = Fmt.kstr (fun str -> raise (Unspecified str)) fmt
 
 open Analyze
