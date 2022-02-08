@@ -12,7 +12,7 @@ depends: [
   "ocaml" {>= "4.07.0"}
   "dune" {>= "2.8.0"}
   "docteur" {= version}
-  "mirage-unix" {>= "4.0.0"}
+  "mirage-unix" {>= "5.0.0"}
   "art" {>= "0.1.1"}
   "bigstringaf" {>= "0.7.0"}
   "carton" {>= "0.4.1"}
@@ -20,18 +20,7 @@ depends: [
   "git" {>= "3.7.0"}
   "logs" {>= "0.7.0"}
   "lwt" {>= "5.4.0"}
-  "mirage-kv" {>= "3.0.1"}
-  "mirage" {with-test}
-  "mirage-unix" {with-test}
-  "mirage-bootvar-unix" {with-test}
-  "mirage-clock-unix" {with-test}
-  "mirage-console-unix" {with-test}
-  "mirage-logs" {with-test}
-  "mirage-channel" {with-test}
-  "mirage-fs" {with-test}
-  "mirage-block" {with-test}
-  "mirage-types" {with-test}
-  "mirage-types-lwt" {with-test}
+  "mirage-kv" {>= "3.0.0"}
 ]
 build: ["dune" "build" "-p" name "-j" jobs]
 run-test: ["dune" "runtest" "-p" name "-j" jobs]

@@ -7,15 +7,16 @@ Simple Git disk.img
   $ git config user.name "Romain Calascibetta"
   $ echo "Hello Git!" > README.md
   $ git add README.md
-  $ git commit -q -m .
+  $ export DATE="2016-08-21 17:18:43 +0200"
+  $ export GIT_COMMITTER_DATE="2016-08-21 17:18:43 +0200"
+  $ git commit --date "$DATE" -q -m "My name is Dr. Greenthumb"
+  $ git checkout -q -b master
   $ cd ..
-  $ docteur.make file://$(pwd)/git-store disk.img
-  $ cp disk.img ../unikernel/
-  $ cd ../unikernel/
-  $ mirage configure -t unix --disk disk.img
-  $ mirage build 2> /dev/null > /dev/null
-  $ ./simple --filename /README.md > out.result
-  $ cd -
-  $TESTCASE_ROOT
-  $ diff ../unikernel/out.result git-store/README.md
-
+  $ docteur.make --branch refs/heads/master file://$(pwd)/git-store disk.img
+  $ docteur.verify disk.img
+  commit	: 7f76ddedf89aaca1a566a5cb3fb2f1b5cc96f716
+  author	: "Romain Calascibetta" <romain@mirage.io>
+  root	: 73c44169dbb57613737326b902934762298208d4
+  
+  My name is Dr. Greenthumb
+  
