@@ -27,7 +27,7 @@ let invalid_arg fmt = Fmt.kstr invalid_arg fmt
 let unspecified fmt = Fmt.kstr (fun str -> raise (Unspecified str)) fmt
 
 open Analyze
-open OS.Solo5
+open Solo5_os.Solo5
 
 type solo5_block_info = { capacity : int64; block_size : int64 }
 
