@@ -367,7 +367,7 @@ let main quiet filename =
 
 let main quiet filename =
   match Lwt_main.run (main quiet filename) with
-  | Ok () -> `Ok 0
+  | Ok () -> `Ok ()
   | Error (`Msg err) -> `Error (false, Fmt.str "%s." err)
 
 let setup_logs style_renderer level =
@@ -396,6 +396,6 @@ let setup_logs =
 
 let command =
   let doc = "Verify the given image disk." in
-  (Term.(ret (const main $ setup_logs $ filename)), Term.info "verify" ~doc)
+  Cmd.v (Cmd.info "verify" ~doc) Term.(ret (const main $ setup_logs $ filename))
 
-let () = Term.(exit @@ eval command)
+let () = Cmd.(exit @@ eval command)

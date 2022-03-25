@@ -561,7 +561,7 @@ let fetch edn want date_time output block_size =
 
 let main _ edn want date_time output block_size =
   match Lwt_main.run (fetch edn want date_time output block_size) with
-  | Ok () -> `Ok 0
+  | Ok () -> `Ok ()
   | Error (`Msg err) -> `Error (false, Fmt.str "%s." err)
   | Error (`Store err) -> `Error (false, Fmt.str "%a." Store.pp_error err)
   | Error (`Sync err) -> `Error (false, Fmt.str "%a." Sync.pp_error err)
@@ -612,7 +612,8 @@ let setup_logs =
 
 let command =
   let doc = "Fetch and make an image disk from a Git repository." in
-  ( Term.(
+  Cmd.v (Cmd.info "make" ~doc)
+    Term.(
       ret
         (const main
         $ setup_logs
@@ -620,7 +621,6 @@ let command =
         $ want
         $ date_time
         $ output
-        $ block_size)),
-    Term.info "make" ~doc )
+        $ block_size))
 
-let () = Term.(exit @@ eval command)
+let () = Cmd.(exit @@ eval command)
