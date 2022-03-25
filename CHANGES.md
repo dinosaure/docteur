@@ -1,3 +1,7 @@
+### v0.0.4 2022-03-25 Paris (France)
+
+- Update `docteur` with `cmdliner.1.1.0` (@dinosaure, #20)
+
 ### v0.0.3 2022-02-08 Paris (France)
 
 - Upgrade `docteur` to MirageOS 4.0 (@dinosaure, #17, 18)
