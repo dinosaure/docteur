@@ -53,6 +53,8 @@ $ docteur.make git@github.com:dinosaure/docteur disk.img
 $ docteur.make https://github.com/dinosaure/docteur disk.img
 $ docteur.make https://user:password@github.com/dinosaure/docteur disk.img
 $ docteur.make git://github.com/dinosaure/docteur disk.img
+$ docteur.make relativize://directory disk.img
+  ; can be a simple directory which will be prepend by $PWD
 $ docteur.make file://$(pwd)/ disk.img 
   ; assume that $(pwd) is a local Git repository
   ; $(pwd)/.git exists

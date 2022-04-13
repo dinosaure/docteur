@@ -491,6 +491,18 @@ let fetch_local_git_repository edn want path output block_size =
         match path' with
         | Ok path' when Fpath.equal path path' -> Lwt.return_some (ic, oc)
         | _ -> Lwt.return_none)
+    | `Scheme "relative" -> (
+        let cwd = Sys.getcwd () in
+        let path' =
+          match Fpath.of_string (host ^ rest) with
+          | Ok v when Fpath.is_rooted ~root v ->
+              let rst = Option.get (Fpath.relativize ~root v) in
+              Ok Fpath.(v cwd // rst)
+          | Ok rst -> Ok Fpath.(v cwd // rst)
+          | Error _ as err -> err in
+        match path' with
+        | Ok path' when Fpath.equal path path' -> Lwt.return_some (ic, oc)
+        | _ -> Lwt.return_none)
     | _ -> Lwt.return_none in
   let ctx =
     let open Mimic in
@@ -499,7 +511,8 @@ let fetch_local_git_repository edn want path output block_size =
     |> Mimic.fold git_transmission
          Fun.[ req git_scheme ]
          ~k:(function
-           | `Scheme "file" -> Lwt.return_some `Exec | _ -> Lwt.return_none)
+           | `Scheme "file" | `Scheme "relativize" -> Lwt.return_some `Exec
+           | _ -> Lwt.return_none)
     |> Mimic.fold fifo_edn
          Fun.[ req git_scheme; req git_hostname; req git_path ]
          ~k:k0 in
@@ -521,12 +534,28 @@ let fetch_local_git_repository edn want path output block_size =
 
 let fetch edn want date_time output block_size =
   match edn with
-  | { Smart_git.Endpoint.scheme = `Scheme "file"; path; hostname; _ } -> (
+  | {
+   Smart_git.Endpoint.scheme = `Scheme (("file" | "relativize") as scheme);
+   path;
+   hostname;
+   _;
+  } -> (
       let path =
-        match Fpath.of_string (hostname ^ path) with
-        | Ok v when Fpath.is_rooted ~root v -> Ok v
-        | Ok x -> Ok Fpath.(root // x)
-        | Error _ as err -> err in
+        match scheme with
+        | "file" -> (
+            match Fpath.of_string (hostname ^ path) with
+            | Ok v when Fpath.is_rooted ~root v -> Ok v
+            | Ok x -> Ok Fpath.(root // x)
+            | Error _ as err -> err)
+        | "relativize" -> (
+            let cwd = Sys.getcwd () in
+            match Fpath.of_string (hostname ^ path) with
+            | Ok v when Fpath.is_rooted ~root v ->
+                let rst = Option.get (Fpath.relativize ~root v) in
+                Ok Fpath.(v cwd // rst)
+            | Ok rst -> Ok Fpath.(v cwd // rst)
+            | Error _ as err -> err)
+        | _ -> assert false in
       path |> R.open_error_msg |> Lwt.return >>? fun path ->
       is_a_git_repository path >>? function
       | true -> fetch_local_git_repository edn want path output block_size
