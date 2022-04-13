@@ -221,8 +221,7 @@ let map fd ~pos len =
   let len = min (Int64.sub max pos) (Int64.of_int len) in
   let len = Int64.to_int len in
   let res =
-    Mmap.V1.map_file fd ~pos Bigarray.char Bigarray.c_layout false [| len |]
-  in
+    Unix.map_file fd ~pos Bigarray.char Bigarray.c_layout false [| len |] in
   Bigarray.array1_of_genarray res
 
 let ( >>? ) = Lwt_result.bind
@@ -273,7 +272,7 @@ let unpack fd index =
             let fd = Lwt_unix.unix_file_descr fd in
             let len = Bigstringaf.length o - Idx.dst_rem encoder in
             let res =
-              Mmap.V1.map_file fd ~pos Bigarray.char Bigarray.c_layout false
+              Unix.map_file fd ~pos Bigarray.char Bigarray.c_layout false
                 [| len |] in
             let res = Bigarray.array1_of_genarray res in
             match compare (Bigstringaf.sub o ~off:0 ~len) res with
@@ -346,7 +345,7 @@ let main quiet filename =
       >>= fun fd ->
       Logs.debug (fun m -> m "File %a opened." Fpath.pp filename) ;
       let hdr =
-        Mmap.V1.map_file
+        Unix.map_file
           (Lwt_unix.unix_file_descr fd)
           ~pos:0L Bigarray.char Bigarray.c_layout false
           [| SHA1.length + 8 |] in

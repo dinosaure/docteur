@@ -18,7 +18,7 @@ let disconnect t = Lwt_unix.close t.fd
 let read fd buf ~off ~len =
   let fd = Lwt_unix.unix_file_descr fd in
   let res =
-    Mmap.V1.map_file fd
+    Unix.map_file fd
       ~pos:(Int64.of_int (SHA1.length + 8))
       Bigarray.char Bigarray.c_layout false [| len |] in
   let res = Bigarray.array1_of_genarray res in
@@ -30,8 +30,7 @@ let read fd buf ~off ~len =
 let get_block fd pos buf off len =
   let fd = Lwt_unix.unix_file_descr fd in
   let res =
-    Mmap.V1.map_file fd ~pos Bigarray.char Bigarray.c_layout false [| len |]
-  in
+    Unix.map_file fd ~pos Bigarray.char Bigarray.c_layout false [| len |] in
   let res = Bigarray.array1_of_genarray res in
   Bigstringaf.blit res ~src_off:0 buf ~dst_off:off ~len ;
   Ok ()
@@ -66,7 +65,7 @@ let connect ?(analyze = false) name =
           .Unix.LargeFile.st_size in
       Log.debug (fun m -> m "Capacity of the given image disk: %Ld" capacity) ;
       let hdr =
-        Mmap.V1.map_file
+        Unix.map_file
           (Lwt_unix.unix_file_descr fd)
           ~pos:0L Bigarray.char Bigarray.c_layout false
           [| SHA1.length + 8 |] in
@@ -97,8 +96,7 @@ let map fd ~pos len =
   let len = min (Int64.of_int len) (Int64.sub max pos) in
   let len = Int64.to_int len in
   let res =
-    Mmap.V1.map_file fd ~pos Bigarray.char Bigarray.c_layout false [| len |]
-  in
+    Unix.map_file fd ~pos Bigarray.char Bigarray.c_layout false [| len |] in
   Bigarray.array1_of_genarray res
 
 module Commit = Git.Commit.Make (Git.Hash.Make (SHA1))
