@@ -1,3 +1,8 @@
+### v0.0.5 2022-04-13 Paris (France)
+
+- Remove `bigarray-compat` and `mmap` package, support only OCaml >= 4.08 (@dinosaure, #22)
+- Be able to use a relative path (instead of an absolute one) when we want to make an image (@dinosaure, #23)
+
 ### v0.0.4 2022-03-25 Paris (France)
 
 - Update `docteur` with `cmdliner.1.1.0` (@dinosaure, #20)
