@@ -63,11 +63,10 @@ let scheduler =
     return = (fun x -> inj (return x));
   }
 
-let replace hashtbl k v =
-  try
-    let v' = Hashtbl.find hashtbl k in
-    if v < v' then Hashtbl.replace hashtbl k v'
-  with _ -> Hashtbl.add hashtbl k v
+let replace tbl k v =
+  match Hashtbl.find_opt tbl k with
+  | Some v' -> if v' < v then Hashtbl.replace tbl k v
+  | _ -> Hashtbl.add tbl k v
 
 let digest ~kind ?(off = 0) ?len buf =
   let len =
