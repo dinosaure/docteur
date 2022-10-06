@@ -327,9 +327,7 @@ let gitify ?date_time path output block_size =
         add_tree store tbl path >>? fun hash ->
         Lwt.return_ok (hash, hash :: hashes)
     | _ -> Lwt.return acc in
-  Fold.fold ~dotfiles:false fold
-    (R.ok (Digestif.SHA1.digest_string "", []))
-    path
+  Fold.fold ~dotfiles:true fold (R.ok (Digestif.SHA1.digest_string "", [])) path
   >>? function
   | root, _hashes when Digestif.SHA1.equal root (Digestif.SHA1.digest_string "")
     ->
