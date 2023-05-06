@@ -1,3 +1,9 @@
+### v0.0.6 2023-05-06 Tanger Med (Morocco)
+
+- Fix how we record `weight` of PACK object (@dinosaure, #25)
+- Aggregate hidden files (@SaySayo, @dinosaure, #26)
+- Upgrade with `mirage-kv.6.0.0` and `mtime.2.0.0` (@dinosaure, #28)
+
 ### v0.0.5 2022-04-13 Paris (France)
 
 - Remove `bigarray-compat` and `mmap` package, support only OCaml >= 4.08 (@dinosaure, #22)
