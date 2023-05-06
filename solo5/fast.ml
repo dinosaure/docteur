@@ -214,8 +214,8 @@ let list t key =
       | Ok (`Tree v) ->
           let f acc { Git.Tree.name; perm; _ } =
             match perm with
-            | `Everybody | `Normal -> (name, `Value) :: acc
-            | `Dir -> (name, `Dictionary) :: acc
+            | `Everybody | `Normal -> (Mirage_kv.Key.v name, `Value) :: acc
+            | `Dir -> (Mirage_kv.Key.v name, `Dictionary) :: acc
             | _ -> acc in
           let lst = List.fold_left f [] (Git.Tree.to_list v) in
           Lwt.return_ok lst
@@ -232,4 +232,16 @@ let digest t key =
   | None, None -> Lwt.return_error (`Not_found key)
   | Some _, Some _ -> assert false
 
-let last_modified _t _key = Lwt.return_ok (0, 0L)
+let last_modified _t _key = Lwt.return_ok Ptime.epoch
+
+open Lwt.Infix
+
+let size t key =
+  get t key >|= function
+  | Ok v -> Ok (Optint.Int63.of_int (String.length v))
+  | Error _ as err -> err
+
+let get_partial t key ~offset ~length =
+  get t key >|= function
+  | Ok v -> Ok (String.sub v (Optint.Int63.to_int offset) length)
+  | Error _ as err -> err
