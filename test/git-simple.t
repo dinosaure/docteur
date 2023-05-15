@@ -10,7 +10,7 @@ Simple Git disk.img
   $ git add README.md
   $ export DATE="2016-08-21 17:18:43 +0200"
   $ export GIT_COMMITTER_DATE="2016-08-21 17:18:43 +0200"
-  $ git commit --date "$DATE" -q -m "My name is Dr. Greenthumb"
+  $ git commit --no-gpg-sign --date "$DATE" -q -m "My name is Dr. Greenthumb"
   $ cd ..
   $ docteur.make --branch refs/heads/master file://$(pwd)/git-store disk.img
   $ docteur.verify disk.img
