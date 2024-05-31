@@ -253,6 +253,8 @@ module SSH = struct
     close_in t.ic ;
     close_out t.oc ;
     Lwt.return_unit
+
+  let shutdown t _ = close t
 end
 
 module FIFO = struct
@@ -309,6 +311,7 @@ module FIFO = struct
     go css
 
   let close t = Lwt_unix.close t.ic >>= fun () -> Lwt_unix.close t.oc
+  let shutdown t _ = close t
 end
 
 let ssh_edn, ssh_protocol = Mimic.register ~name:"ssh" (module SSH)

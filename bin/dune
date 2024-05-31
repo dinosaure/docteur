@@ -12,6 +12,7 @@
   rresult
   logs
   logs.cli
+  logs.fmt
   fmt.tty
   fmt.cli
   mtime
@@ -39,6 +40,7 @@
   rresult
   logs
   logs.cli
+  logs.fmt
   fmt.tty
   fmt.cli
   mtime
