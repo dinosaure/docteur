@@ -4,6 +4,7 @@
  (package docteur)
  (public_name docteur.make)
  (libraries
+  ptime.clock.os
   digestif.c
   bigstringaf
   result
