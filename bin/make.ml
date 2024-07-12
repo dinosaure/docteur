@@ -255,8 +255,12 @@ module SSH = struct
     Lwt.return_unit
 
   let shutdown t = function
-    | `read -> close_in t.ic; Lwt.return_unit
-    | `write -> close_out t.oc; Lwt.return_unit
+    | `read ->
+        close_in t.ic ;
+        Lwt.return_unit
+    | `write ->
+        close_out t.oc ;
+        Lwt.return_unit
     | `read_write -> close t
 end
 
