@@ -1,3 +1,7 @@
+### v0.0.7 2024-07-17 Paris (France)
+
+- Upgrade with `mirage-flow.4.0.0` (@dinosaure, #31, #33)
+
 ### v0.0.6 2023-05-06 Tanger Med (Morocco)
 
 - Fix how we record `weight` of PACK object (@dinosaure, #25)
