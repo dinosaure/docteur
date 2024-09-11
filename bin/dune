@@ -18,6 +18,7 @@
   fmt.cli
   mtime
   mtime.clock.os
+  mirage-crypto-rng.unix
   lwt
   lwt.unix
   git-unix
