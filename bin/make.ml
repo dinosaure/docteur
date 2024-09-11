@@ -3,6 +3,7 @@ open Lwt.Infix
 
 let ( >>? ) = Lwt_result.bind
 let () = Random.self_init ()
+let () = Mirage_crypto_rng_unix.initialize (module Mirage_crypto_rng.Fortuna)
 
 module Append = struct
   type 'a rd = < rd : unit ; .. > as 'a
